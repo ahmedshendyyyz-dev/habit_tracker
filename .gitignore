@@ -1,0 +1,10 @@
+# Your personal data never goes into Git: entries, photos and backups stay only on this PC.
+data/
+
+# Temporary files the server writes while saving.
+*.tmp
+
+# Editor and system files.
+.vscode/
+Thumbs.db
+desktop.ini
