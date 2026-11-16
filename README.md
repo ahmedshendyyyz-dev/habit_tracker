@@ -42,6 +42,17 @@ Every check-in, finished task and reached milestone becomes a square on a contri
 | **Trips** | Upcoming and past trips with photos and a reusable packing list. |
 | **Bucket list, Projects, Wishlist** | Turn a bucket-list dream into a goal in one click. Track projects and DIY builds, and keep a list of things you want. |
 
+### Reminders
+| | |
+|---|---|
+| **Morning summary** | "3 tasks today, 1 overdue, 1 event", plus any milestones due tomorrow or running late. |
+| **Events** | A heads-up before anything with a time, 15 minutes by default. |
+| **Habit nudge** | In the evening, the habits you have not finished yet: "Water 1/3, Reading 0/10". |
+| **Weekly review** | A reminder on the day you choose, only if you have not written it yet. |
+| **Prayer times** | Worked out every day for your city (Egyptian General Authority of Survey method), with a reminder before and at each prayer. Nudge any prayer by a few minutes to match your mosque. |
+
+Reminders arrive as real notifications on your phone and computer, even when the app is closed. Choose which ones you want and when in **Settings → Notifications**.
+
 ### Built in
 - **Install it like an app** on Android, iPhone, Windows or Mac, with its own icon and full screen.
 - **Linked sections.** A workout ticks your Gym habit, coding time adds to your Coding habit, and every video you finish counts toward your Course lessons.
@@ -78,6 +89,8 @@ Every check-in, finished task and reached milestone becomes a square on a contri
 
 That's it. Everything you do is saved straight away and shows up on your other devices within 30 seconds, or as soon as you switch back to the app.
 
+To get reminders, open **More → Settings → Notifications** on each device, press **Turn on for this device**, and allow notifications. **Send a test** checks that it works.
+
 ### Your first five minutes
 1. Click **Edit profile** on Today and add your name and photo.
 2. Open **Habits** and press **Add starter habits**, or create your own.
@@ -99,6 +112,18 @@ habit_tracker is a personal app: each copy belongs to one person, and sign-ups a
 6. **Connect the app to your project.** In [`public/js/config.js`](public/js/config.js), put your **Project URL** and **publishable key** (from **Project Settings → API**). Never put the secret or `service_role` key there.
 7. **Publish it.** In your repository, go to **Settings → Pages → Source** and choose **GitHub Actions**. Every push to `main` now publishes the app to `https://YOUR-NAME.github.io/habit_tracker/`.
 
+### Optional: phone notifications
+8. **Make your notification keys.** Run this once with [Node.js](https://nodejs.org) and keep the output private:
+   ```bash
+   node -e "const c=require('crypto');const k=c.generateKeyPairSync('ec',{namedCurve:'prime256v1'}).privateKey.export({format:'jwk'});console.log('VAPID_PUBLIC_KEY='+Buffer.concat([Buffer.from([4]),Buffer.from(k.x,'base64url'),Buffer.from(k.y,'base64url')]).toString('base64url'));console.log('VAPID_PRIVATE_KEY='+k.d);console.log('CRON_SECRET='+c.randomBytes(24).toString('base64url'))"
+   ```
+   Put the **public** key in `public/js/config.js` as `VAPID_PUBLIC_KEY`.
+9. **Add the tables.** Run [`supabase/notifications.sql`](supabase/notifications.sql) in the SQL Editor.
+10. **Add the sender.** In **Edge Functions → Secrets**, add `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` and `CRON_SECRET`. Then deploy [`supabase/functions/notify/index.ts`](supabase/functions/notify/index.ts) as a function named `notify`, with **Verify JWT turned off**. It checks the secret and your login itself.
+11. **Start the schedule.** In [`supabase/notifications-cron.sql`](supabase/notifications-cron.sql), fill in your project and your `CRON_SECRET`, then run it. The sender now checks every 5 minutes for reminders that are due.
+
+The private key and the cron secret are passwords: keep them only in Supabase's secrets, never in the code.
+
 ---
 
 ## Your data and privacy
@@ -119,6 +144,8 @@ Plain, dependency-light code that is easy to read and change.
 - **Data:** Supabase Postgres, with access rules and two small database functions for saving and restoring. All your data is one JSON document, and pages share one in-memory copy, so moving around is instant.
 - **Photos:** Supabase Storage, shown through private links that are made fresh each time the app opens.
 - **YouTube playlists:** a Supabase Edge Function reads the public playlist page and checks you are signed in.
+- **Notifications:** Supabase Cron runs a second Edge Function every 5 minutes. It works out what is due from your data, sends standard Web Push notifications (encrypted and signed with the browser's built-in Web Crypto, no libraries), and remembers what it sent so nothing arrives twice.
+- **Prayer times:** calculated from the sun's position in a few dozen lines of code, so there is no outside service to depend on.
 - **Installable:** a web app manifest and a small service worker. It always loads the latest version, and only keeps a fallback copy of the app's files, never your data.
 
 ```
@@ -135,10 +162,16 @@ habit_tracker/
 │       ├── schema.js        every section and its fields
 │       ├── app.js           sign-in, top bar, tabs, midnight rollover
 │       ├── grid.js          the contribution grid
+│       ├── prayer.js        prayer times for any day and city
+│       ├── notifyView.js    Settings → Notifications
 │       └── ...              one file per section (tasks, habits, goals, health, learning)
 ├── supabase/
 │   ├── setup.sql            tables, access rules, save and restore functions, photo storage
-│   └── functions/playlist/  the YouTube playlist reader
+│   ├── notifications.sql    notification settings, devices, and what was sent
+│   ├── notifications-cron.sql   the every-5-minutes schedule (a template)
+│   └── functions/
+│       ├── playlist/        the YouTube playlist reader
+│       └── notify/          sends your reminders
 ├── .github/workflows/       publishes the app on every push
 └── server.js                optional local server, for testing on a copy of your data
 ```
@@ -152,6 +185,8 @@ Run `node server.js` (needs [Node.js](https://nodejs.org) 18+) and open **http:/
 
 - **YouTube playlists** are read from the public playlist page, without an API key. If YouTube changes that page, fetching new playlists may stop working until the reader is updated. Courses you already added keep working. Only the first 100 videos of a playlist are fetched.
 - **The focus timer** remembers a running session on the device you started it on. The saved result appears everywhere.
+- **Notifications** need the app installed on iPhone (Add to Home Screen). On Android they work from Chrome, installed or not. A reminder can arrive up to 5 minutes after its time, since the sender runs every 5 minutes.
+- **Prayer times** are set for Cairo. For another city, change its latitude, longitude and time zone in `public/js/prayer.js` (`CAIRO`) and in `supabase/functions/notify/index.ts` (`DEFAULT_PREFS.place`).
 - **Weeks start on Saturday** in the planner and weekly review.
 - **Supabase's free plan** pauses a project after a week with no use. Using the app regularly keeps it awake, and a paused project can be resumed from the Supabase dashboard.
 
@@ -160,7 +195,7 @@ Run `node server.js` (needs [Node.js](https://nodejs.org) 18+) and open **http:/
 ## Roadmap
 
 - [x] Same data on phone and computer, installable as an app
-- [ ] Phone reminders for tasks, habits and deadlines
+- [x] Phone reminders for tasks, habits, milestones, the weekly review and prayer times
 - [ ] Google Calendar events in the week planner
 - [ ] Undo for quick actions, and archiving old habits and goals
 
