@@ -15,6 +15,9 @@ const DATA_DIR = process.env.LIFE_DATA_DIR || path.join(__dirname, 'data');
 const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
 const BACKUPS_DIR = path.join(DATA_DIR, 'backups');
 const DATA_FILE = path.join(DATA_DIR, 'life-data.json');
+const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
+// How many daily copies to keep, in data/backups and in your backup folder.
+const KEEP_DAILY = 90;
 
 const COLLECTIONS = ['tasks', 'habits', 'weights', 'workouts', 'courses', 'books', 'sessions', 'wishlist', 'trips', 'projects', 'bucket', 'goals', 'journal', 'reviews', 'profile'];
 const MAX_JSON_BYTES = 20 * 1024 * 1024;
@@ -84,7 +87,164 @@ async function backUpCurrentFile() {
   const pad = (value) => String(value).padStart(2, '0');
   const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
   const daily = path.join(BACKUPS_DIR, `${stamp}.json`);
-  if (!fs.existsSync(daily)) await fsp.copyFile(DATA_FILE, daily);
+  if (!fs.existsSync(daily)) {
+    await fsp.copyFile(DATA_FILE, daily);
+    await pruneDaily(BACKUPS_DIR, /^\d{4}-\d{2}-\d{2}\.json$/);
+  }
+}
+
+// Removes the oldest dated copies beyond KEEP_DAILY. Named copies, like before-restore ones, are kept.
+async function pruneDaily(dir, pattern) {
+  const names = (await fsp.readdir(dir)).filter((name) => pattern.test(name)).sort();
+  for (const name of names.slice(0, Math.max(0, names.length - KEEP_DAILY))) {
+    await fsp.rm(path.join(dir, name), { force: true });
+  }
+}
+
+function today() {
+  const now = new Date();
+  const pad = (value) => String(value).padStart(2, '0');
+  return `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+}
+
+/* ---------- Copies to another folder (OneDrive, a USB drive) ---------- */
+
+async function readSettings() {
+  try {
+    return JSON.parse(await fsp.readFile(SETTINGS_FILE, 'utf8'));
+  } catch {
+    return {};
+  }
+}
+
+async function writeSettings(settings) {
+  const tempPath = `${SETTINGS_FILE}.${crypto.randomUUID()}.tmp`;
+  await fsp.writeFile(tempPath, JSON.stringify(settings, null, 2), 'utf8');
+  await replaceFile(tempPath, SETTINGS_FILE);
+}
+
+// Copies your data and any new photos into the backup folder.
+let copying = null;
+function copyToBackupFolder() {
+  if (copying) return copying;
+  copying = (async () => {
+    const settings = await readSettings();
+    if (!settings.backupFolder) throw new HttpError(400, 'Choose a backup folder first.');
+    const target = settings.backupFolder;
+    try {
+      await fsp.mkdir(path.join(target, 'photos'), { recursive: true });
+      if (fs.existsSync(DATA_FILE)) await fsp.copyFile(DATA_FILE, path.join(target, `life-data-${today()}.json`));
+      const have = new Set(await fsp.readdir(path.join(target, 'photos')));
+      for (const name of await fsp.readdir(PHOTOS_DIR)) {
+        if (!have.has(name) && !name.endsWith('.tmp')) await fsp.copyFile(path.join(PHOTOS_DIR, name), path.join(target, 'photos', name));
+      }
+      await pruneDaily(target, /^life-data-\d{4}-\d{2}-\d{2}\.json$/);
+      settings.lastCopy = new Date().toISOString();
+      settings.lastCopyDay = today();
+      settings.lastCopyError = '';
+    } catch (error) {
+      settings.lastCopyError = `Could not copy to ${target}: ${error.code || error.message}`;
+      await writeSettings(settings);
+      throw new HttpError(500, settings.lastCopyError);
+    }
+    await writeSettings(settings);
+    return settings;
+  })().finally(() => { copying = null; });
+  return copying;
+}
+
+// Once a day, while the site is running, if a backup folder is set.
+async function dailyCopy() {
+  const settings = await readSettings();
+  if (!settings.backupFolder) return;
+  if (settings.lastCopyDay === today()) return;
+  try { await copyToBackupFolder(); } catch (error) { console.error(error.message); }
+}
+
+async function backupStatus() {
+  const settings = await readSettings();
+  const entries = [];
+  for (const name of await fsp.readdir(BACKUPS_DIR)) {
+    if (!name.endsWith('.json')) continue;
+    const stat = await fsp.stat(path.join(BACKUPS_DIR, name));
+    entries.push({ name, size: stat.size, modified: stat.mtime.toISOString() });
+  }
+  if (fs.existsSync(path.join(DATA_DIR, 'life-data.backup.json'))) {
+    const stat = await fsp.stat(path.join(DATA_DIR, 'life-data.backup.json'));
+    entries.push({ name: 'life-data.backup.json', size: stat.size, modified: stat.mtime.toISOString(), latest: true });
+  }
+  entries.sort((a, b) => b.modified.localeCompare(a.modified));
+  const oneDrive = process.env.OneDrive || process.env.OneDriveConsumer || '';
+  return {
+    backupFolder: settings.backupFolder || '',
+    lastCopy: settings.lastCopy || '',
+    lastCopyError: settings.lastCopyError || '',
+    suggestedFolder: oneDrive ? path.join(oneDrive, 'habit_tracker backups') : '',
+    backups: entries,
+  };
+}
+
+async function setBackupFolder(body) {
+  const folder = String((body && body.folder) || '').trim();
+  const settings = await readSettings();
+  if (!folder) {
+    settings.backupFolder = '';
+    await writeSettings(settings);
+    return backupStatus();
+  }
+  if (!path.isAbsolute(folder)) throw new HttpError(400, 'Use a full folder path, for example C:\\Users\\you\\OneDrive\\habit_tracker backups.');
+  const resolved = path.resolve(folder);
+  if (resolved === path.resolve(DATA_DIR) || resolved.startsWith(path.resolve(DATA_DIR) + path.sep)) {
+    throw new HttpError(400, 'Choose a folder outside the data folder, so the copy survives if this folder is lost.');
+  }
+  try {
+    await fsp.mkdir(resolved, { recursive: true });
+  } catch (error) {
+    throw new HttpError(400, `That folder could not be created (${error.code || error.message}).`);
+  }
+  settings.backupFolder = resolved;
+  await writeSettings(settings);
+  await copyToBackupFolder();
+  return backupStatus();
+}
+
+/* ---------- Restore ---------- */
+
+function isValidData(data) {
+  return data && typeof data === 'object' && data.items && typeof data.items === 'object'
+    && Object.values(data.items).every((list) => Array.isArray(list));
+}
+
+// Replaces your data with a backup. The current data is saved first, so a restore can be undone.
+function restoreData(body) {
+  const run = async () => {
+    let incoming;
+    if (body && typeof body.name === 'string') {
+      const name = body.name;
+      const file = name === 'life-data.backup.json'
+        ? path.join(DATA_DIR, name)
+        : /^[\w.-]+\.json$/.test(name) ? path.join(BACKUPS_DIR, name) : '';
+      if (!file || !fs.existsSync(file)) throw new HttpError(404, 'That backup was not found.');
+      try { incoming = JSON.parse(await fsp.readFile(file, 'utf8')); } catch { throw new HttpError(400, 'That backup file could not be read.'); }
+    } else {
+      incoming = body && body.data;
+    }
+    if (!isValidData(incoming)) throw new HttpError(400, 'That file is not a habit_tracker backup.');
+    const current = await readData();
+    if (fs.existsSync(DATA_FILE)) {
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+      await fsp.copyFile(DATA_FILE, path.join(BACKUPS_DIR, `before-restore-${stamp}.json`));
+    }
+    for (const key of COLLECTIONS) if (!Array.isArray(incoming.items[key])) incoming.items[key] = [];
+    const next = { version: 1, rev: current.rev + 1, items: incoming.items };
+    const tempPath = `${DATA_FILE}.${crypto.randomUUID()}.tmp`;
+    await fsp.writeFile(tempPath, JSON.stringify(next, null, 2), 'utf8');
+    await replaceFile(tempPath, DATA_FILE);
+    return { rev: next.rev };
+  };
+  const result = saveQueue.then(run, run);
+  saveQueue = result.catch(() => {});
+  return result;
 }
 
 // Saves run one at a time so two requests can never interleave their writes.
@@ -232,6 +392,21 @@ async function route(req, res) {
 
   if (pathname === '/api/health' && req.method === 'GET') return sendJson(res, 200, { app: 'habit_tracker' });
   if (pathname === '/api/data' && req.method === 'GET') return sendJson(res, 200, await readData());
+  // A cheap check the page makes every half minute: has anything changed since I loaded?
+  if (pathname === '/api/rev' && req.method === 'GET') return sendJson(res, 200, { rev: (await readData()).rev });
+  if (pathname === '/api/export' && req.method === 'GET') {
+    res.writeHead(200, {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Content-Disposition': `attachment; filename="habit_tracker-${today()}.json"`,
+      'Cache-Control': 'no-store',
+      'X-Content-Type-Options': 'nosniff',
+    });
+    return res.end(JSON.stringify(await readData(), null, 2));
+  }
+  if (pathname === '/api/backup' && req.method === 'GET') return sendJson(res, 200, await backupStatus());
+  if (pathname === '/api/backup/folder' && req.method === 'PUT') return sendJson(res, 200, await setBackupFolder(await readJsonBody(req)));
+  if (pathname === '/api/backup/run' && req.method === 'POST') { await copyToBackupFolder(); return sendJson(res, 200, await backupStatus()); }
+  if (pathname === '/api/restore' && req.method === 'POST') return sendJson(res, 200, await restoreData(await readJsonBody(req)));
   if (pathname === '/api/data' && req.method === 'PUT') {
     return sendJson(res, 200, await saveData(await readJsonBody(req)));
   }
@@ -292,6 +467,10 @@ async function main() {
     console.error(`Port ${PORT} is being used by another program, so habit_tracker could not start.`);
     process.exit(1);
   });
+
+  // A copy to your backup folder once a day: at start, then checked every hour.
+  setTimeout(dailyCopy, 5000);
+  setInterval(dailyCopy, 60 * 60 * 1000).unref();
 
   server.listen(PORT, HOST, () => {
     console.log(`habit_tracker is running at ${URL_BASE}`);

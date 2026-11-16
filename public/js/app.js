@@ -1,9 +1,9 @@
-import { COLLECTIONS, COLLECTION_KEYS, HUBS } from './schema.js';
+import { COLLECTIONS, COLLECTION_KEYS, HUBS, todayISO } from './schema.js';
 import './links.js';
-import { h } from './ui.js';
-import { items, load } from './store.js';
+import { h, showDialog } from './ui.js';
+import { checkForChanges, items, load } from './store.js';
 import { displayName, headerAvatar, renderRoute } from './views.js';
-import { counter } from './components.js';
+import { counter, viewState } from './components.js';
 import { tasksLeftToday } from './tasksView.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
@@ -17,8 +17,14 @@ const searchInput = searchForm.querySelector('input');
 
 // The tabs shown in the row. Everything else sits under "More".
 const PRIMARY_TABS = ['tasks', 'habits', 'goals', 'health', 'learning', 'journal', 'bucket', 'trips'];
-const MORE_TABS = COLLECTION_KEYS.filter((key) => !PRIMARY_TABS.includes(key) && !COLLECTIONS[key].parent);
-const tabLabel = (key) => (HUBS[key] ? HUBS[key].label : COLLECTIONS[key].label);
+const MORE_TABS = [...COLLECTION_KEYS.filter((key) => !PRIMARY_TABS.includes(key) && !COLLECTIONS[key].parent), 'settings'];
+const tabLabel = (key) => (key === 'settings' ? 'Settings' : HUBS[key] ? HUBS[key].label : COLLECTIONS[key].label);
+
+// On phones, a bar at the bottom holds the pages you use every day. The rest open from More.
+const BOTTOM_TABS = [['', 'Today', 'home'], ['tasks', 'Tasks', 'calendar'], ['habits', 'Habits', 'check'], ['journal', 'Reflect', 'book']];
+const SHEET_TABS = ['goals', 'health', 'learning', 'bucket', 'trips', ...MORE_TABS];
+const SHEET_ICONS = { goals: 'target', health: 'tool', learning: 'box', bucket: 'check', trips: 'pin', projects: 'box', wishlist: 'list', settings: 'gear' };
+const bottomNav = document.getElementById('bottom-nav');
 
 /* ---------- Light and dark mode ---------- */
 
@@ -117,9 +123,37 @@ function drawHeader(active) {
       summary: ['More', icon('chevron', 'icon icon-chevron')],
       label: 'More sections',
       align: 'left',
-      entries: MORE_TABS.map((key) => ({ label: COLLECTIONS[key].label, href: `#/${key}`, current: active === key })),
+      entries: MORE_TABS.map((key) => ({ label: tabLabel(key), href: `#/${key}`, current: active === key })),
     })),
   );
+  drawBottomNav(active);
+}
+
+function openSheet(active) {
+  const dialog = h('dialog', { class: 'sheet', 'aria-label': 'All sections', onclick: (event) => { if (event.target === dialog) dialog.close(); } },
+    h('div', { class: 'sheet-inner' },
+      h('div', { class: 'dialog-header' }, h('h2', {}, 'All sections'),
+        h('button', { class: 'btn-icon btn-invisible', type: 'button', 'aria-label': 'Close', onclick: () => dialog.close() }, icon('close'))),
+      h('nav', { class: 'sheet-list' }, SHEET_TABS.map((key) => h('a', {
+        class: 'sheet-item',
+        href: `#/${key}`,
+        'aria-current': active === key ? 'page' : undefined,
+        onclick: () => dialog.close(),
+      }, icon(SHEET_ICONS[key] || 'circle'), tabLabel(key))))));
+  showDialog(dialog);
+}
+
+function drawBottomNav(active) {
+  const inSheet = SHEET_TABS.includes(active);
+  bottomNav.replaceChildren(
+    ...BOTTOM_TABS.map(([key, label, iconName]) => {
+      const count = key === 'tasks' ? tasksLeftToday() : 0;
+      return h('a', { class: 'bottom-item', href: `#/${key}`, 'aria-current': active === key ? 'page' : undefined },
+        h('span', { class: 'bottom-icon' }, icon(iconName), count > 0 && h('span', { class: 'bottom-badge' }, String(count))),
+        h('span', {}, label));
+    }),
+    h('button', { class: `bottom-item${inSheet ? ' is-current' : ''}`, type: 'button', onclick: () => openSheet(active) },
+      h('span', { class: 'bottom-icon' }, icon('more')), h('span', {}, 'More')));
 }
 
 /* ---------- Page drawing ---------- */
@@ -155,6 +189,49 @@ async function start() {
   // After a save or a small view change, redraw in place.
   window.addEventListener('life:changed', () => render({ fresh: false }));
   window.addEventListener('life:rerender', () => render({ fresh: false }));
+  watchForChanges();
+}
+
+/* ---------- Other devices and midnight ---------- */
+
+// True while you are typing in a box on the page. A redraw then would wipe what you typed.
+function isTyping() {
+  const element = document.activeElement;
+  if (!element || !app.contains(element)) return false;
+  if (element.matches('textarea')) return true;
+  return element.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="button"])') && element.value !== '';
+}
+
+let waiting = false;
+function redrawSoon() {
+  if (isTyping()) { waiting = true; return; }
+  waiting = false;
+  render({ fresh: false });
+}
+
+let shownDay = todayISO();
+function checkDay() {
+  if (todayISO() === shownDay) return;
+  // A new day: "today" moves on, and the planner goes back to this week.
+  shownDay = todayISO();
+  viewState.weekOffset = 0;
+  viewState.reflectWeek = 0;
+  redrawSoon();
+}
+
+function sync() {
+  checkDay();
+  if (document.visibilityState === 'visible') checkForChanges().catch(() => { /* Tried again in 30 seconds. */ });
+}
+
+function watchForChanges() {
+  // Changes saved on your phone or in another tab show up here within half a minute,
+  // and straight away when you come back to this tab.
+  window.addEventListener('life:remote', redrawSoon);
+  app.addEventListener('focusout', () => { if (waiting) setTimeout(redrawSoon, 0); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') sync(); });
+  window.addEventListener('focus', sync);
+  setInterval(sync, 30 * 1000);
 }
 
 start();

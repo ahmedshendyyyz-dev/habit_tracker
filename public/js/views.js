@@ -16,6 +16,7 @@ import { healthPage, workoutMeta, workoutTable } from './healthView.js';
 import { learningPage, progressPanel } from './learningView.js';
 import { currentFocus, reflectPage, reviewIsDue, reviewPage } from './reflectView.js';
 import { packingBox, tripStatus } from './tripsView.js';
+import { settingsPage } from './settingsView.js';
 import { addItems, updateItem } from './store.js';
 
 const DEFAULT_NAME = 'Ahmed Shendy';
@@ -517,6 +518,7 @@ export function renderRoute(hash) {
     try { query = decodeURIComponent(id); } catch { query = id; }
     return { active: 'search', query, nodes: searchPage(query) };
   }
+  if (key === 'settings') return { active: key, nodes: settingsPage() };
   if (key === 'health' || key === 'learning') return { active: key, nodes: key === 'health' ? healthPage() : learningPage() };
   // Weight, workouts, courses, books and coding sessions live on their hub page.
   const parent = COLLECTIONS[key] && COLLECTIONS[key].parent;

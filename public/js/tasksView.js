@@ -1,6 +1,6 @@
 // The task pieces: rows, quick add, the Today box and the week planner.
 import { REPEAT, displayTitle, formatDate, todayISO } from './schema.js';
-import { h, toast } from './ui.js';
+import { h, showDialog, toast } from './ui.js';
 import { findItem, items, saveItem, updateItem } from './store.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
@@ -39,6 +39,55 @@ function checkOrIcon(task, day, done) {
 }
 
 // One task in a list. day is the day it is shown for.
+/* ---------- Moving a task to another day ---------- */
+
+function moveDialog(task) {
+  const today = todayISO();
+  const title = displayTitle('tasks', task);
+  const picker = h('input', { id: 'move-date', type: 'date', value: task.date || today, class: 'inline-input' });
+  const dialog = h('dialog', { 'aria-labelledby': 'move-heading' });
+  const move = async (day) => {
+    if (!day) return;
+    try {
+      await updateItem('tasks', task.id, (latest) => { latest.date = day; });
+      dialog.close();
+      toast(`Moved to ${formatDate(day)}`);
+    } catch (error) {
+      toast(`Not moved: ${error.message}`, true);
+    }
+  };
+  const from = task.date && task.date > today ? task.date : today;
+  const quick = [['Today', today], ['Tomorrow', addDays(today, 1)], ['In a week', addDays(from, 7)]];
+  dialog.append(h('form', {
+    class: 'form',
+    onsubmit: (event) => { event.preventDefault(); move(picker.value); },
+  },
+    h('div', { class: 'dialog-header' },
+      h('h2', { id: 'move-heading' }, `Move "${title}"`),
+      h('button', { class: 'btn-icon btn-invisible', type: 'button', 'aria-label': 'Close', onclick: () => dialog.close() }, icon('close'))),
+    h('div', { class: 'dialog-body' },
+      h('div', { class: 'btn-row' }, quick.map(([label, day]) => h('button', {
+        class: 'btn', type: 'button', disabled: day === task.date, onclick: () => move(day),
+      }, `${label} · ${formatDate(day)}`))),
+      h('div', { class: 'field' }, h('label', { for: 'move-date' }, 'Or pick a day'), picker)),
+    h('div', { class: 'dialog-footer' },
+      h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancel'),
+      h('button', { class: 'btn btn-primary', type: 'submit' }, 'Move'))));
+  showDialog(dialog);
+}
+
+// Only one-off tasks that are not done yet can move. Repeating ones follow their schedule.
+function moveButton(task, done) {
+  if (isRepeating(task) || done) return null;
+  return h('button', {
+    class: 'btn-icon btn-invisible move-button',
+    type: 'button',
+    'aria-label': `Move "${displayTitle('tasks', task)}" to another day`,
+    title: 'Move to another day',
+    onclick: () => moveDialog(task),
+  }, icon('move'));
+}
+
 export function taskRow(task, day, { showDate = false, overdue = false } = {}) {
   const done = isDoneOn(task, day);
   const when = showDate ? nextOccurrence(task) : '';
@@ -55,7 +104,8 @@ export function taskRow(task, day, { showDate = false, overdue = false } = {}) {
         task.time && h('span', { class: 'task-time' }, formatTime(task.time)),
         h('a', { href: `#/tasks/${task.id}` }, displayTitle('tasks', task)),
         overdue && h('span', { class: 'label label-danger' }, `Overdue since ${formatDate(task.date)}`)),
-      meta.length > 0 && h('p', { class: 'muted small' }, meta)));
+      meta.length > 0 && h('p', { class: 'muted small' }, meta)),
+    moveButton(task, done));
 }
 
 export function quickAdd(day, placeholder) {
@@ -148,7 +198,8 @@ function weekChip(task, day) {
     h('div', { class: 'week-item-text' },
       task.time && h('span', { class: 'task-time' }, formatTime(task.time)),
       h('a', { href: `#/tasks/${task.id}` }, displayTitle('tasks', task)),
-      isRepeating(task) && h('span', { class: 'week-repeat', title: repeatLabel(task) }, icon('repeat'))));
+      isRepeating(task) && h('span', { class: 'week-repeat', title: repeatLabel(task) }, icon('repeat'))),
+    moveButton(task, done));
 }
 
 function weekColumn(day) {
@@ -201,7 +252,7 @@ function weekView() {
       h('h2', { class: 'week-range' }, range)),
     overdue.length > 0 && boxSection(['Overdue ', counter(overdue.length)], h('ul', { class: 'list' }, overdue.map((task) => taskRow(task, task.date, { overdue: true })))),
     h('div', { class: 'week-grid' }, days.map(weekColumn)),
-    h('p', { class: 'muted small week-hint' }, 'Drag a one-off task to another day to move it. Repeating tasks show a repeat icon and stay on their schedule.'),
+    h('p', { class: 'muted small week-hint' }, 'To move a one-off task, drag it to another day or use its arrow button. Repeating tasks show a repeat icon and stay on their schedule.'),
   ];
 }
 

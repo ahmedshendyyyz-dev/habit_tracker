@@ -824,6 +824,71 @@ dialog::backdrop { background: #1f232866; }
 .box-header > .inline-input { height: 28px; font-size: 12px; }
 .view-switch .counter { margin-left: 4px; }
 
+/* ---------- Phones: bottom bar, sheet, bigger touch targets ---------- */
+
+.bottom-nav { display: none; }
+.move-button { flex: none; width: 28px; height: 28px; opacity: 0.6; }
+.move-button:hover, .move-button:focus-visible { opacity: 1; }
+.week-item .move-button { width: 22px; height: 22px; margin-left: auto; }
+.week-item .move-button svg { width: 12px; height: 12px; }
+
+.sheet-list { display: grid; gap: 2px; padding: 8px; }
+.sheet-item {
+  display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 6px;
+  color: var(--fg); font-size: 16px;
+}
+.sheet-item .icon { color: var(--fg-muted); }
+.sheet-item:hover { background: var(--bg-hover); text-decoration: none; }
+.sheet-item[aria-current="page"] { font-weight: 600; background: var(--bg-subtle); }
+
+@media (max-width: 767px) {
+  .tabs { display: none; }
+  .topbar-row { padding-bottom: 12px; }
+  main { padding-bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+  .bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
+    display: grid; grid-template-columns: repeat(5, 1fr);
+    padding: 4px max(8px, env(safe-area-inset-right, 0px)) calc(4px + env(safe-area-inset-bottom, 0px)) max(8px, env(safe-area-inset-left, 0px));
+    background: var(--bg-subtle); border-top: 1px solid var(--border);
+  }
+  .bottom-item {
+    display: grid; justify-items: center; gap: 2px; padding: 6px 2px; min-height: 52px;
+    font: inherit; font-size: 11px; color: var(--fg-muted);
+    background: none; border: 0; border-radius: 8px; cursor: pointer;
+  }
+  .bottom-item:hover { text-decoration: none; }
+  .bottom-item[aria-current="page"], .bottom-item.is-current { color: var(--fg); font-weight: 600; }
+  .bottom-item[aria-current="page"] .bottom-icon, .bottom-item.is-current .bottom-icon { background: var(--bg-hover); }
+  .bottom-icon { position: relative; display: grid; place-items: center; width: 48px; height: 28px; border-radius: 14px; }
+  .bottom-icon .icon, .bottom-icon svg { width: 20px; height: 20px; }
+  .bottom-badge {
+    position: absolute; top: -2px; right: 4px; min-width: 18px; height: 18px; padding: 0 5px;
+    font-size: 11px; font-weight: 600; line-height: 18px; text-align: center;
+    color: #fff; background: var(--tab-active); border-radius: 9px;
+  }
+  .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+  dialog.sheet {
+    margin: auto 0 0; width: 100%; max-width: 100%; border-radius: 16px 16px 0 0;
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+}
+
+/* Fingers need bigger targets than a mouse. */
+@media (pointer: coarse) {
+  .btn { min-height: 40px; }
+  .btn-small { min-height: 36px; }
+  .btn-icon { width: 40px; height: 40px; }
+  .stepper { height: 40px; }
+  .stepper-btn { width: 44px; height: 38px; }
+  .chip { height: 36px; padding: 0 14px; font-size: 13px; }
+  .check-button { height: 40px; }
+  .row-check { width: 22px; height: 22px; }
+  .move-button { width: 36px; height: 36px; opacity: 1; }
+  .week-item .move-button { width: 32px; height: 32px; }
+  .quick-add-input, .inline-input { min-height: 40px; }
+  .day-toggle span { height: 36px; min-width: 48px; }
+}
+
 /* ---------- Toast ---------- */
 
 .toast {
@@ -849,4 +914,8 @@ dialog::backdrop { background: #1f232866; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; }
+}
+
+@media (max-width: 767px) {
+  .toast { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
 }

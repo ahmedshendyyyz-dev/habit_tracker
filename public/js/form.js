@@ -2,7 +2,7 @@
 import { COLLECTIONS, WEEKDAY_NAMES, displayTitle, photoUrl, sortItems, todayISO } from './schema.js';
 import { confirmDialog, h, showDialog, toast } from './ui.js';
 import { icon } from './icons.js';
-import { items, saveItem, uploadPhoto } from './store.js';
+import { items, saveItem, updateItem, uploadPhoto } from './store.js';
 
 function photoField(field, existing, markDirty) {
   // Each entry is { name } for a saved photo, or { file, url } for a new one.
@@ -282,7 +282,17 @@ export function openForm(key, existing, defaults = {}) {
         next[field.key] = value;
       }
       if (collection.normalize) collection.normalize(next, isNew ? null : existing);
-      await saveItem(key, next);
+      if (isNew) {
+        await saveItem(key, next);
+      } else {
+        // Save only what this form changed, on top of the newest copy. A habit check-in your
+        // phone made while this form was open is kept.
+        const changed = {};
+        for (const [field, value] of Object.entries(next)) {
+          if (JSON.stringify(value) !== JSON.stringify(existing[field])) changed[field] = value;
+        }
+        await updateItem(key, next.id, (latest) => Object.assign(latest, changed));
+      }
       forceClose = true;
       dialog.close();
       toast('Saved');

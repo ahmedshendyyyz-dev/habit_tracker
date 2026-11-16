@@ -18,8 +18,22 @@ async function request(url, options) {
   } catch {
     // Handled by the status check below.
   }
-  if (!response.ok) throw new Error((body && body.error) || 'Something went wrong. Please try again.');
+  if (!response.ok) {
+    const error = new Error((body && body.error) || 'Something went wrong. Please try again.');
+    error.status = response.status;
+    throw error;
+  }
   return body;
+}
+
+// Takes in the newest saved data, for example after your phone saved something.
+function adopt(data) {
+  state.rev = data.rev;
+  state.items = data.items;
+  // Sections added in newer versions start out empty.
+  for (const key of Object.keys(COLLECTIONS)) {
+    if (!Array.isArray(state.items[key])) state.items[key] = [];
+  }
 }
 
 export function items(key) {
@@ -31,13 +45,7 @@ export function findItem(key, id) {
 }
 
 export async function load() {
-  const data = await request('/api/data');
-  state.rev = data.rev;
-  state.items = data.items;
-  // Sections added in newer versions start out empty.
-  for (const key of Object.keys(COLLECTIONS)) {
-    if (!Array.isArray(state.items[key])) state.items[key] = [];
-  }
+  adopt(await request('/api/data'));
   await moveOldSections();
 }
 
@@ -58,18 +66,49 @@ async function moveOldSections() {
 // One save at a time, so quick actions cannot overwrite each other.
 let queue = Promise.resolve();
 
+// Every change is a small function applied to a fresh copy of the data. If another device or tab
+// saved first, the server refuses with 409; then the newest data is loaded and the same change is
+// applied again on top of it, so neither change is lost.
 export function commit(change) {
   const run = async () => {
-    const next = structuredClone(state.items);
-    change(next);
-    const result = await request('/api/data', {
-      method: 'PUT',
-      headers: { ...HEADERS, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rev: state.rev, items: next }),
-    });
-    state.items = next;
-    state.rev = result.rev;
-    window.dispatchEvent(new Event('life:changed'));
+    let pulled = false;
+    for (let attempt = 0; ; attempt++) {
+      const next = structuredClone(state.items);
+      change(next);
+      try {
+        const result = await request('/api/data', {
+          method: 'PUT',
+          headers: { ...HEADERS, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rev: state.rev, items: next }),
+        });
+        state.items = next;
+        state.rev = result.rev;
+        window.dispatchEvent(new Event('life:changed'));
+        return;
+      } catch (error) {
+        if (error.status !== 409 || attempt >= 3) {
+          if (pulled) window.dispatchEvent(new Event('life:changed'));
+          throw error;
+        }
+        adopt(await request('/api/data'));
+        pulled = true;
+      }
+    }
+  };
+  const result = queue.then(run, run);
+  queue = result.catch(() => {});
+  return result;
+}
+
+// Asks the server whether anything changed since this page loaded, and takes it in if so.
+// Runs in the same queue as saves, so it never lands in the middle of one.
+export function checkForChanges() {
+  const run = async () => {
+    const { rev } = await request('/api/rev');
+    if (rev === state.rev) return false;
+    adopt(await request('/api/data'));
+    window.dispatchEvent(new Event('life:remote'));
+    return true;
   };
   const result = queue.then(run, run);
   queue = result.catch(() => {});
@@ -90,7 +129,7 @@ export function saveItem(key, item) {
 export function updateItem(key, id, change) {
   return commit((next) => {
     const item = next[key].find((entry) => entry.id === id);
-    if (!item) throw new Error('This was deleted in another tab. Reload the page.');
+    if (!item) throw new Error('This was deleted on another device or in another tab.');
     change(item);
     item.updatedAt = new Date().toISOString();
   });
