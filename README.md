@@ -1,6 +1,6 @@
 # habit_tracker
 
-**Your whole life on one green grid.** Habits, tasks, goals, workouts, courses and reflections in a private dashboard that looks and feels like GitHub, and runs entirely on your own computer.
+**Your whole life on one green grid.** Habits, tasks, goals, workouts, courses and reflections in a private dashboard that looks and feels like GitHub, on your phone and your computer.
 
 Every check-in, finished task and reached milestone becomes a square on a contribution grid. Watch the squares turn green, keep your streaks alive, and see how close you are to every goal.
 
@@ -11,9 +11,10 @@ Every check-in, finished task and reached milestone becomes a square on a contri
 ## Why habit_tracker?
 
 - **One place for everything.** No more jumping between a habit app, a to-do app, a notes app and a spreadsheet.
-- **Private by design.** Your data lives in a single file on your computer. No account, no cloud, no tracking.
+- **Same data on every device.** Tick a habit on your phone and it is there on your laptop, within seconds.
+- **Private by design.** Your entries and photos are locked to your own account. Nobody else can sign up or see them.
 - **Motivating, not noisy.** A calm, familiar GitHub-style look, with green squares that reward showing up every day.
-- **Zero setup.** No database and no `npm install`. Just Node.js and a double-click.
+- **Free to run.** Hosted on GitHub Pages, with data in a free Supabase project.
 
 ---
 
@@ -42,11 +43,12 @@ Every check-in, finished task and reached milestone becomes a square on a contri
 | **Bucket list, Projects, Wishlist** | Turn a bucket-list dream into a goal in one click. Track projects and DIY builds, and keep a list of things you want. |
 
 ### Built in
+- **Install it like an app** on Android, iPhone, Windows or Mac, with its own icon and full screen.
 - **Linked sections.** A workout ticks your Gym habit, coding time adds to your Coding habit, and every video you finish counts toward your Course lessons.
 - **Light and dark mode**, with one click.
-- **Works on your phone's screen size**, with a bottom tab bar and big touch targets.
+- **Made for phones too**, with a bottom tab bar and big touch targets.
 - **Search everything** (press <kbd>/</kbd>).
-- **Backups**: a copy before every change, a daily copy to any folder you choose (OneDrive works great), one-click download and restore.
+- **Backups**: a copy of your data from the start of every day (kept 90 days), one-click download, and restore.
 
 ---
 
@@ -68,25 +70,13 @@ Every check-in, finished task and reached milestone becomes a square on a contri
 
 ---
 
-## Get started
+## Using it
 
-### What you need
-- **[Node.js](https://nodejs.org) 18 or newer.** That is the only requirement.
+1. Open the app's address in Chrome, Edge or Safari, on any device.
+2. Sign in with your email and password.
+3. Install it: on a phone, **⋮ → Install app** (Android) or **Share → Add to Home Screen** (iPhone). On a computer, click the install icon in the address bar.
 
-### Run it (Windows)
-1. Download this project: click **Code → Download ZIP** and unzip it, or run:
-   ```bash
-   git clone https://github.com/ahmedshendyyyz-dev/habit_tracker.git
-   ```
-2. Double-click **`Start habit_tracker.bat`**.
-3. Your browser opens at **http://127.0.0.1:4173**. Keep the small window open while you use the app, and close it when you are done.
-
-### Run it (macOS or Linux)
-```bash
-cd habit_tracker
-LIFE_NO_OPEN=1 node server.js
-```
-Then open **http://127.0.0.1:4173** in your browser.
+That's it. Everything you do is saved straight away and shows up on your other devices within 30 seconds, or as soon as you switch back to the app.
 
 ### Your first five minutes
 1. Click **Edit profile** on Today and add your name and photo.
@@ -97,62 +87,79 @@ Then open **http://127.0.0.1:4173** in your browser.
 
 ---
 
-## Your data
+## Set up your own copy
 
-Everything you enter is saved in the `data` folder next to the app:
+habit_tracker is a personal app: each copy belongs to one person, and sign-ups are switched off. To run your own, you need a free **[Supabase](https://supabase.com)** account and a **GitHub** account. It takes about 15 minutes, with no coding.
 
-```
-data/
-├── life-data.json   all your entries, in one readable file
-├── photos/          photos you add
-└── backups/         automatic daily copies, kept for 90 days
-```
+1. **Fork or copy this repository** to your GitHub account.
+2. **Create a Supabase project.** Pick the region closest to you, and keep the Data API turned on.
+3. **Create the database.** In Supabase, open **SQL Editor**, paste in [`supabase/setup.sql`](supabase/setup.sql) and click **Run**.
+4. **Create your account.** Go to **Authentication → Users → Add user** and tick **Auto Confirm User**. Then, under **Authentication → Sign In / Providers**, turn off **Allow new users to sign up**.
+5. **Add the playlist reader.** Go to **Edge Functions → Deploy a new function → Via Editor**, name it `playlist`, and paste in [`supabase/functions/playlist/index.ts`](supabase/functions/playlist/index.ts).
+6. **Connect the app to your project.** In [`public/js/config.js`](public/js/config.js), put your **Project URL** and **publishable key** (from **Project Settings → API**). Never put the secret or `service_role` key there.
+7. **Publish it.** In your repository, go to **Settings → Pages → Source** and choose **GitHub Actions**. Every push to `main` now publishes the app to `https://YOUR-NAME.github.io/habit_tracker/`.
 
-- The app only listens on your own computer (`127.0.0.1`). Other devices and websites cannot reach it.
-- The `data` folder is listed in `.gitignore`, so it never ends up on GitHub.
-- Open **More → Settings** to download your data, restore any backup, or copy everything to another folder every day.
+---
+
+## Your data and privacy
+
+- **Where it lives:** in your own Supabase project. Your entries are one private document, and your photos sit in a private storage folder.
+- **Who can see it:** only you. The database checks your login on every read and write, and sign-ups are off, so no one else can create an account.
+- **The public key is public on purpose.** `config.js` holds the project URL and the publishable key, which are designed to be visible. Your data is protected by your login and the database's access rules, not by hiding that key.
+- **Two devices, one truth:** each save checks it is building on the latest version, so the phone and the computer never overwrite each other.
+- **Backups:** a copy from the start of each day for 90 days, plus one before every restore. In **More → Settings** you can download everything as a file or restore any copy.
 
 ---
 
 ## How it is built
 
-Plain, dependency-free code that is easy to read and change.
+Plain, dependency-light code that is easy to read and change.
 
-- **Server:** one Node.js file (`server.js`) using only built-in modules. It serves the app, saves your data safely (write to a temporary file, then swap), and keeps backups.
-- **App:** plain JavaScript modules, HTML and CSS. No framework and no build step.
-- **Data:** one JSON file. Pages share a single in-memory copy, so moving between pages is instant.
-- **Syncing:** if the app is open in two places, each save is checked against the latest version, and changes from elsewhere show up within 30 seconds.
+- **App:** plain JavaScript modules, HTML and CSS. No framework and no build step. It is a static site, hosted on GitHub Pages.
+- **Data:** Supabase Postgres, with access rules and two small database functions for saving and restoring. All your data is one JSON document, and pages share one in-memory copy, so moving around is instant.
+- **Photos:** Supabase Storage, shown through private links that are made fresh each time the app opens.
+- **YouTube playlists:** a Supabase Edge Function reads the public playlist page and checks you are signed in.
+- **Installable:** a web app manifest and a small service worker. It always loads the latest version, and only keeps a fallback copy of the app's files, never your data.
 
 ```
 habit_tracker/
-├── server.js              local server: files, saving, backups, restore
-├── youtube.js             reads video names from a public YouTube playlist
-├── Start habit_tracker.bat
-└── public/
-    ├── index.html
-    ├── css/styles.css     the GitHub-style look, light and dark
-    └── js/
-        ├── app.js         top bar, tabs, syncing, midnight rollover
-        ├── store.js       loading and saving
-        ├── schema.js      every section and its fields
-        ├── views.js       pages and routing
-        ├── grid.js        the contribution grid
-        └── ...            one file per section (tasks, habits, goals, health, learning)
+├── public/                  the app, published to GitHub Pages
+│   ├── index.html
+│   ├── manifest.webmanifest app name and icons, for installing
+│   ├── sw.js                makes it installable
+│   ├── css/styles.css       the GitHub-style look, light and dark
+│   └── js/
+│       ├── config.js        your Supabase project URL and public key
+│       ├── backend.js       talks to Supabase (or the local test server)
+│       ├── store.js         loading, saving and syncing
+│       ├── schema.js        every section and its fields
+│       ├── app.js           sign-in, top bar, tabs, midnight rollover
+│       ├── grid.js          the contribution grid
+│       └── ...              one file per section (tasks, habits, goals, health, learning)
+├── supabase/
+│   ├── setup.sql            tables, access rules, save and restore functions, photo storage
+│   └── functions/playlist/  the YouTube playlist reader
+├── .github/workflows/       publishes the app on every push
+└── server.js                optional local server, for testing on a copy of your data
 ```
+
+### Testing without touching your real data
+Run `node server.js` (needs [Node.js](https://nodejs.org) 18+) and open **http://127.0.0.1:4173/?local**. The `?local` switch makes the app use a `data` folder on your computer instead of Supabase. That folder is listed in `.gitignore`, so it never ends up on GitHub.
 
 ---
 
 ## Good to know
 
 - **YouTube playlists** are read from the public playlist page, without an API key. If YouTube changes that page, fetching new playlists may stop working until the reader is updated. Courses you already added keep working. Only the first 100 videos of a playlist are fetched.
-- **The focus timer** remembers a running session in your browser, so a session started on one device does not appear on another. The saved result does.
+- **The focus timer** remembers a running session on the device you started it on. The saved result appears everywhere.
 - **Weeks start on Saturday** in the planner and weekly review.
+- **Supabase's free plan** pauses a project after a week with no use. Using the app regularly keeps it awake, and a paused project can be resumed from the Supabase dashboard.
 
 ---
 
 ## Roadmap
 
-- [ ] Open the app on your phone from anywhere (private network with Tailscale)
+- [x] Same data on phone and computer, installable as an app
 - [ ] Phone reminders for tasks, habits and deadlines
 - [ ] Google Calendar events in the week planner
 - [ ] Undo for quick actions, and archiving old habits and goals
