@@ -7,6 +7,7 @@ import { counter, viewState } from './components.js';
 import { tasksLeftToday } from './tasksView.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
+import { resumeSession, sessionIndicator } from './focusSession.js';
 
 const app = document.getElementById('app');
 const brand = document.getElementById('brand');
@@ -81,7 +82,7 @@ const addMenu = menu({
   label: 'Add something new',
   entries: COLLECTION_KEYS.filter((key) => key !== 'reviews').map((key) => ({ label: `New ${COLLECTIONS[key].singular}`, onClick: () => openForm(key) })),
 });
-actions.append(addMenu, themeButton);
+actions.append(sessionIndicator(), addMenu, themeButton);
 
 /* ---------- Search ---------- */
 
@@ -182,6 +183,7 @@ async function start() {
     return;
   }
   render({ fresh: true });
+  resumeSession();
   window.addEventListener('hashchange', () => {
     render({ fresh: true });
     app.focus({ preventScroll: true });

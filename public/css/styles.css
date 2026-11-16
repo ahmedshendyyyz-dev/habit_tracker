@@ -901,6 +901,86 @@ dialog::backdrop { background: #1f232866; }
 .video-done.is-on { color: #fff; background: var(--btn-primary); border-color: #1f232826; }
 .video-done.is-on .icon { color: #fff; }
 
+/* ---------- Coding session ---------- */
+
+.focus-overlay {
+  position: fixed; inset: 0; z-index: 45; overflow-y: auto;
+  background: var(--bg);
+  padding: calc(24px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) calc(24px + env(safe-area-inset-bottom, 0px)) max(16px, env(safe-area-inset-left, 0px));
+}
+body.has-focus-overlay { overflow: hidden; }
+.focus-stage { min-height: 100%; display: grid; place-items: center; }
+.focus-panel { width: min(100%, 560px); display: grid; gap: 14px; justify-items: center; text-align: center; }
+.focus-eyebrow { font-family: var(--mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--fg-muted); }
+.focus-topic { font-size: 22px; font-weight: 600; overflow-wrap: anywhere; }
+.focus-clock {
+  font-family: var(--mono); font-size: clamp(64px, 16vw, 120px); font-weight: 600; line-height: 1;
+  letter-spacing: -0.04em; font-variant-numeric: tabular-nums; margin-top: 8px;
+}
+.focus-sub { color: var(--fg-muted); margin-top: -6px; }
+.focus-progress { color: var(--fg-muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.is-paused .focus-clock { color: var(--fg-muted); }
+
+.focus-grid {
+  --cell: clamp(18px, 6vw, 30px);
+  display: grid; grid-template-columns: repeat(10, var(--cell)); gap: 5px; justify-content: center; margin-top: 10px;
+}
+.focus-cell {
+  position: relative; width: var(--cell); height: var(--cell); border-radius: 4px; overflow: hidden;
+  background: var(--grid-0); outline: 1px solid #1b1f230f; outline-offset: -1px;
+}
+.focus-cell[data-level="2"] { background: var(--grid-2); }
+.focus-cell[data-level="3"] { background: var(--grid-3); }
+.focus-cell[data-level="4"] { background: var(--grid-4); }
+/* The current minute fills from the bottom as its seconds pass. */
+.focus-cell.is-now::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--fill) * 100%);
+  background: var(--grid-1); transition: height 0.9s linear;
+}
+.focus-cell.is-now { box-shadow: 0 0 0 2px var(--grid-3); animation: focus-pulse 2s ease-in-out infinite; }
+.is-paused .focus-cell.is-now { animation: none; box-shadow: 0 0 0 2px var(--border); }
+.focus-grid.is-break .focus-cell[data-level] { background: color-mix(in srgb, var(--accent) 55%, var(--bg)); }
+.focus-grid.is-break .focus-cell.is-now::after { background: color-mix(in srgb, var(--accent) 35%, var(--bg)); }
+.focus-grid.is-break .focus-cell.is-now { box-shadow: 0 0 0 2px var(--accent); }
+@keyframes focus-pulse { 50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--grid-3) 45%, transparent); } }
+
+.focus-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 12px; }
+.btn-large { height: 44px; padding: 0 22px; font-size: 15px; }
+.focus-minimize { margin-top: 4px; padding: 6px 10px; border: 0; background: none; font: inherit; font-size: 13px; color: var(--accent); cursor: pointer; border-radius: 6px; }
+.focus-minimize:hover { text-decoration: underline; }
+.focus-label { font-weight: 600; justify-self: stretch; text-align: left; }
+.focus-input {
+  justify-self: stretch; min-height: 40px; padding: 8px 12px; font: inherit; font-size: 15px; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; resize: vertical;
+}
+.focus-input:focus { outline: none; border-color: var(--focus); box-shadow: inset 0 0 0 1px var(--focus); }
+.focus-input-short { justify-self: start; width: 120px; }
+.focus-chips { justify-content: center; }
+.focus-hint { color: var(--fg-muted); font-size: 13px; }
+.focus-fields { display: grid; gap: 8px; justify-self: stretch; margin-top: 8px; }
+/* Setup and review are forms: everything lines up on the left, buttons on the right. */
+.focus-panel.is-form { text-align: left; justify-items: stretch; }
+.focus-panel.is-form .focus-topic, .focus-panel.is-form .focus-eyebrow { justify-self: start; }
+.focus-panel.is-form .focus-grid { justify-self: start; }
+.focus-panel.is-form .focus-chips { justify-content: flex-start; }
+.focus-panel.is-form .focus-actions { justify-content: flex-end; }
+
+.focus-pill {
+  display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px;
+  font: inherit; font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--success); border-radius: 2em; cursor: pointer;
+  font-variant-numeric: tabular-nums;
+}
+.focus-pill[hidden] { display: none; }
+.focus-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--success); animation: focus-blink 2s ease-in-out infinite; }
+.focus-dot.is-paused { background: var(--fg-muted); animation: none; }
+.focus-dot.is-break { background: var(--accent); }
+@keyframes focus-blink { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) {
+  .focus-cell.is-now, .focus-dot { animation: none; }
+  .focus-cell.is-now::after { transition: none; }
+}
+
 /* ---------- Toast ---------- */
 
 .toast {

@@ -6,6 +6,7 @@ import { openForm } from './form.js';
 import { icon } from './icons.js';
 import { boxSection, confirmDelete, counter, progressBar, stat, statusLabel } from './components.js';
 import { loadPlaylist, playlistLink, setVideoDone, watchUrl } from './courses.js';
+import { sessionButton } from './focusSession.js';
 import { columnChart } from './charts.js';
 import { parseDay, weekDays } from './tasks.js';
 import { feedHabit } from './habits.js';
@@ -88,7 +89,9 @@ function codingBox() {
       h('div', { class: 'row-main' },
         h('div', { class: 'row-title row-title-task' }, h('a', { href: `#/sessions/${session.id}` }, displayTitle('sessions', session))),
         h('p', { class: 'muted small' }, `${formatDate(session.date)} · ${session.minutes} min`))))),
-  ], h('button', { class: 'btn btn-small', type: 'button', onclick: () => openForm('sessions') }, icon('plus'), 'Log an earlier session'));
+  ], h('div', { class: 'btn-row' },
+    h('button', { class: 'btn btn-small', type: 'button', onclick: () => openForm('sessions') }, 'Log an earlier session'),
+    sessionButton()));
 }
 
 /* ---------- Courses ---------- */
