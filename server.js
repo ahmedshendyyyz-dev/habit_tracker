@@ -6,6 +6,7 @@ const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
 const { spawn } = require('child_process');
+const { fetchPlaylist, PlaylistError } = require('./youtube.js');
 
 const PORT = Number(process.env.LIFE_PORT) || 4173;
 const HOST = '127.0.0.1';
@@ -407,6 +408,16 @@ async function route(req, res) {
   if (pathname === '/api/backup/folder' && req.method === 'PUT') return sendJson(res, 200, await setBackupFolder(await readJsonBody(req)));
   if (pathname === '/api/backup/run' && req.method === 'POST') { await copyToBackupFolder(); return sendJson(res, 200, await backupStatus()); }
   if (pathname === '/api/restore' && req.method === 'POST') return sendJson(res, 200, await restoreData(await readJsonBody(req)));
+  // Reads the video names of a YouTube playlist for a course.
+  if (pathname === '/api/playlist' && req.method === 'POST') {
+    const body = await readJsonBody(req);
+    try {
+      return sendJson(res, 200, await fetchPlaylist(body && body.url));
+    } catch (error) {
+      if (error instanceof PlaylistError) throw new HttpError(400, error.message);
+      throw error;
+    }
+  }
   if (pathname === '/api/data' && req.method === 'PUT') {
     return sendJson(res, 200, await saveData(await readJsonBody(req)));
   }

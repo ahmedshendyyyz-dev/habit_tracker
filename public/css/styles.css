@@ -889,6 +889,18 @@ dialog::backdrop { background: #1f232866; }
   .day-toggle span { height: 36px; min-width: 48px; }
 }
 
+/* ---------- Course videos ---------- */
+
+.video-row { align-items: center; }
+.video-number { flex: none; width: 28px; text-align: right; font-family: var(--mono); font-size: 12px; }
+.video-title { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }
+.video-title:hover { color: var(--accent); }
+.video-row.is-done .video-title { color: var(--fg-muted); }
+.video-done { flex: none; }
+.video-done .icon { color: var(--fg-muted); }
+.video-done.is-on { color: #fff; background: var(--btn-primary); border-color: #1f232826; }
+.video-done.is-on .icon { color: #fff; }
+
 /* ---------- Toast ---------- */
 
 .toast {

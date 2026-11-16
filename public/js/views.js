@@ -13,7 +13,7 @@ import { addDays, formatTime, repeatLabel } from './tasks.js';
 import { goalProgress } from './goals.js';
 import { goalDetailPage, goalStatusLabel, nextMilestoneLine } from './goalsView.js';
 import { healthPage, workoutMeta, workoutTable } from './healthView.js';
-import { learningPage, progressPanel } from './learningView.js';
+import { courseDetailPage, learningPage, progressPanel } from './learningView.js';
 import { currentFocus, reflectPage, reviewIsDue, reviewPage } from './reflectView.js';
 import { packingBox, tripStatus } from './tripsView.js';
 import { settingsPage } from './settingsView.js';
@@ -524,7 +524,7 @@ export function renderRoute(hash) {
   const parent = COLLECTIONS[key] && COLLECTIONS[key].parent;
   if (key === 'reviews') return { active: 'journal', nodes: id ? reviewPage(id) : reflectPage() };
   if (parent && !id) return { active: parent, nodes: parent === 'health' ? healthPage() : learningPage() };
-  if (parent) return { active: parent, nodes: detailPage(key, id) };
+  if (parent) return { active: parent, nodes: key === 'courses' ? courseDetailPage(id) : detailPage(key, id) };
   if (key === 'journal' && !id) return { active: key, nodes: reflectPage() };
   if (key === 'projects' && !id) return { active: key, nodes: projectsPage() };
   if (!COLLECTIONS[key] || COLLECTIONS[key].hidden) {

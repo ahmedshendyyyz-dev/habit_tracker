@@ -14,6 +14,7 @@ export const HABIT_TYPES = { check: 'Yes or no', number: 'Number', list: 'Checkl
 export const LIFE_AREAS = ['Personal', 'Career', 'Learning', 'Health', 'Deen', 'Family'];
 export const MOODS = ['Not set', 'Great', 'Good', 'Okay', 'Low', 'Bad'];
 const isDiy = (values) => values.type === 'DIY';
+export const hasVideos = (course) => Boolean(course && Array.isArray(course.videos) && course.videos.length);
 
 // Hub pages group several sections under one tab.
 export const HUBS = {
@@ -101,16 +102,25 @@ export const COLLECTIONS = {
     stayAfterAdd: true,
     dateKey: 'startDate',
     fields: [
-      { key: 'title', label: 'Course', type: 'text', required: true },
+      { key: 'playlist', label: 'YouTube playlist link', type: 'url', hint: 'Optional. Paste the playlist link and every video name is fetched when you save.' },
+      { key: 'title', label: 'Course', type: 'text', hint: 'Leave empty to use the playlist\'s name.' },
       { key: 'platform', label: 'Where', type: 'text', half: true, hint: 'For example Udemy or YouTube.' },
       { key: 'status', label: 'Status', type: 'select', options: ['In progress', 'Planned', 'Paused', 'Done'], half: true },
-      { key: 'totalLessons', label: 'Total lessons', type: 'number', half: true },
-      { key: 'doneLessons', label: 'Lessons done', type: 'number', half: true },
+      // A course with a playlist counts its lessons from the videos you mark as done.
+      { key: 'totalLessons', label: 'Total lessons', type: 'number', half: true, showIf: (values, item) => !hasVideos(item) },
+      { key: 'doneLessons', label: 'Lessons done', type: 'number', half: true, showIf: (values, item) => !hasVideos(item) },
       { key: 'startDate', label: 'Started', type: 'date', half: true },
       { key: 'link', label: 'Link', type: 'url' },
       NOTES,
     ],
     normalize: (course, before) => {
+      if (!course.title && !course.playlist) course.title = 'Untitled course';
+      if (!course.platform && course.playlist && /youtu/i.test(course.playlist)) course.platform = 'YouTube';
+      if (hasVideos(before)) {
+        course.totalLessons = before.videos.length;
+        course.doneLessons = before.videos.filter((video) => video.done).length;
+        return;
+      }
       trackProgress(course, before, 'doneLessons', 'totalLessons');
       const total = Number(course.totalLessons) || 0;
       if (total && course.doneLessons >= total) course.status = 'Done';
@@ -345,6 +355,7 @@ export function dateRange(start, end) {
 export function displayTitle(key, item) {
   if (key === 'weights') return `${item.kg} kg on ${formatDate(item.date)}`;
   if (key === 'sessions') return item.topic || `${item.minutes} minutes of coding`;
+  if (key === 'courses' && !item.title) return item.playlistTitle || 'Course';
   if (item.title) return item.title;
   return key === 'journal' ? formatDate(item.date) || 'Journal entry' : 'Untitled';
 }

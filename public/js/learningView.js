@@ -1,10 +1,11 @@
 // The Learning page: your roadmap, coding time, courses and books.
-import { HUBS, displayTitle, formatDate, todayISO } from './schema.js';
+import { HUBS, displayTitle, formatDate, hasVideos, todayISO } from './schema.js';
 import { h, toast } from './ui.js';
-import { items, saveItem, updateItem } from './store.js';
+import { findItem, items, saveItem, updateItem } from './store.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
-import { boxSection, counter, progressBar, stat, statusLabel } from './components.js';
+import { boxSection, confirmDelete, counter, progressBar, stat, statusLabel } from './components.js';
+import { loadPlaylist, playlistLink, setVideoDone, watchUrl } from './courses.js';
 import { columnChart } from './charts.js';
 import { parseDay, weekDays } from './tasks.js';
 import { feedHabit } from './habits.js';
@@ -120,8 +121,9 @@ function courseRow(course) {
     h('div', { class: 'row-main' },
       h('div', { class: 'row-title' }, h('a', { href: `#/courses/${course.id}` }, title), statusLabel(course.status)),
       total > 0 && progressBar((done / total) * 100, title),
-      h('p', { class: 'muted small' }, [course.platform, total ? `${done} of ${total} lessons` : `${done} lessons done`].filter(Boolean).join(' · '))),
-    active && (!total || done < total) && h('button', {
+      h('p', { class: 'muted small' }, [course.platform, total ? `${done} of ${total} ${hasVideos(course) ? 'videos' : 'lessons'}` : `${done} lessons done`].filter(Boolean).join(' · '))),
+    // A playlist course is ticked video by video on its own page.
+    active && !hasVideos(course) && (!total || done < total) && h('button', {
       class: 'btn btn-small',
       type: 'button',
       'data-focus': `lesson-${course.id}`,
@@ -231,8 +233,95 @@ export function progressPanel(key, item) {
   const total = Number(key === 'books' ? item.totalPages : item.totalLessons) || 0;
   const done = Number(key === 'books' ? item.currentPage : item.doneLessons) || 0;
   if (!total) return null;
-  const unit = key === 'books' ? 'pages' : 'lessons';
+  const unit = key === 'books' ? 'pages' : hasVideos(item) ? 'videos' : 'lessons';
   return boxSection(`${Math.round((done / total) * 100)}% done`, h('div', { class: 'box-body stack-sm' },
     progressBar((done / total) * 100, displayTitle(key, item)),
     h('p', { class: 'muted small' }, `${done} of ${total} ${unit}`)));
+}
+
+/* ---------- A course's own page ---------- */
+
+function videoRow(course, video, index) {
+  const title = video.title || `Video ${index + 1}`;
+  return h('li', { class: `list-row video-row${video.done ? ' is-done' : ''}` },
+    h('span', { class: 'video-number muted' }, String(index + 1)),
+    h('div', { class: 'row-main' },
+      h('a', { class: 'video-title', href: watchUrl(course, video), target: '_blank', rel: 'noopener noreferrer' }, title),
+      video.done && video.doneDate && h('p', { class: 'muted small' }, `Done ${formatDate(video.doneDate)}`)),
+    h('button', {
+      class: `btn btn-small video-done${video.done ? ' is-on' : ''}`,
+      type: 'button',
+      'aria-pressed': String(Boolean(video.done)),
+      'aria-label': video.done ? `Mark "${title}" as not done` : `Mark "${title}" as done`,
+      'data-focus': `video-${video.id}`,
+      onclick: async () => {
+        try {
+          const habit = await setVideoDone(course, video.id, !video.done);
+          if (!video.done) toast(`Done.${habitNote(habit)}`);
+        } catch (error) {
+          toast(`Not saved: ${error.message}`, true);
+        }
+      },
+    }, icon('checkSmall'), video.done ? 'Done' : 'Mark as done'));
+}
+
+function videosBox(course) {
+  if (!playlistLink(course) && !hasVideos(course)) {
+    return boxSection('Videos', h('div', { class: 'box-empty' },
+      h('p', { class: 'muted' }, 'Add a YouTube playlist link with Edit, and every video in it shows up here to tick off.')));
+  }
+  if (!hasVideos(course)) {
+    return boxSection('Videos', h('div', { class: 'box-empty' },
+      h('p', { class: 'muted' }, Number(course.doneLessons) > 0
+        ? `This course has a YouTube playlist. Fetch its videos to tick them one by one. Your ${course.doneLessons} done ${Number(course.doneLessons) === 1 ? 'lesson becomes' : 'lessons become'} the first ${Number(course.doneLessons) === 1 ? 'video' : `${course.doneLessons} videos`} ticked.`
+        : 'This course has a YouTube playlist. Fetch its videos to tick them one by one.'),
+      h('button', {
+        class: 'btn btn-primary',
+        type: 'button',
+        onclick: async (event) => {
+          event.currentTarget.disabled = true;
+          try {
+            const playlist = await loadPlaylist(course);
+            toast(`Found ${playlist.videos.length} videos`);
+          } catch (error) {
+            toast(error.message, true);
+            event.currentTarget.disabled = false;
+          }
+        },
+      }, 'Fetch the videos')));
+  }
+  const done = course.videos.filter((video) => video.done).length;
+  return boxSection(['Videos ', counter(`${done}/${course.videos.length}`)],
+    h('ol', { class: 'list' }, course.videos.map((video, index) => videoRow(course, video, index))),
+    course.playlist && h('a', { class: 'small', href: course.playlist, target: '_blank', rel: 'noopener noreferrer' }, 'Open on YouTube'));
+}
+
+export function courseDetailPage(id) {
+  const course = findItem('courses', id);
+  const crumb = h('nav', { class: 'breadcrumb', 'aria-label': 'Breadcrumb' }, h('a', { href: '#/learning' }, 'Learning · Courses'), h('span', { 'aria-hidden': 'true' }, '/'));
+  if (!course) {
+    return [crumb, h('div', { class: 'box blankslate' }, h('h3', {}, 'This course could not be found'), h('p', {}, 'It may have been deleted.'))];
+  }
+  const total = Number(course.totalLessons) || 0;
+  const done = Number(course.doneLessons) || 0;
+  const unit = hasVideos(course) ? 'videos' : 'lessons';
+  const link = /^https?:\/\//i.test(course.link || '') ? course.link : '';
+  return [
+    crumb,
+    h('div', { class: 'detail-head' },
+      h('div', { class: 'detail-title' },
+        h('h1', {}, displayTitle('courses', course)),
+        h('p', { class: 'detail-meta' },
+          statusLabel(course.status),
+          h('span', { class: 'muted' }, [course.platform, total ? `${done} of ${total} ${unit}` : '', course.startDate && `Started ${formatDate(course.startDate)}`].filter(Boolean).join(' · ')))),
+      h('div', { class: 'btn-row' },
+        !hasVideos(course) && (!total || done < total) && h('button', { class: 'btn', type: 'button', onclick: () => addLesson(course) }, icon('plus'), '1 lesson'),
+        h('button', { class: 'btn', type: 'button', 'data-edit': true, onclick: () => openForm('courses', course) }, icon('pencil'), 'Edit'),
+        h('button', { class: 'btn btn-danger', type: 'button', 'data-delete': true, onclick: () => confirmDelete('courses', course) }, 'Delete'))),
+    h('div', { class: 'stack' },
+      progressPanel('courses', course),
+      videosBox(course),
+      link && boxSection('Link', h('div', { class: 'box-body' }, h('a', { href: link, target: '_blank', rel: 'noopener noreferrer', style: 'overflow-wrap: anywhere' }, link))),
+      course.notes && boxSection('Notes', h('div', { class: 'box-body' }, h('p', { class: 'prose' }, course.notes)))),
+  ];
 }
