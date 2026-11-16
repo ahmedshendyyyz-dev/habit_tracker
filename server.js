@@ -5,7 +5,8 @@ const fs = require('fs');
 const fsp = fs.promises;
 const path = require('path');
 const crypto = require('crypto');
-const { spawn } = require('child_process');
+const os = require('os');
+const { spawn, execFile } = require('child_process');
 const { fetchPlaylist, PlaylistError } = require('./youtube.js');
 
 const PORT = Number(process.env.LIFE_PORT) || 4173;
@@ -378,12 +379,75 @@ function sendFile(res, filePath, contentType, cacheControl) {
 
 // Blocks other websites open in the browser from reading or changing this data.
 function isAllowed(req) {
-  const hosts = [`${HOST}:${PORT}`, `localhost:${PORT}`];
-  if (!hosts.includes(req.headers.host)) return false;
+  const hosts = allowedHosts();
+  const host = String(req.headers.host || '').toLowerCase();
+  if (!hosts.includes(host)) return false;
   if (req.method === 'GET') return true;
-  const origin = req.headers.origin;
-  const originOk = !origin || origin === `http://${hosts[0]}` || origin === `http://${hosts[1]}`;
+  const origin = String(req.headers.origin || '').toLowerCase();
+  const originOk = !origin || hosts.some((name) => origin === `http://${name}`);
   return originOk && req.headers['x-habit-tracker'] === '1';
+}
+
+/* ---------- Your phone, through Tailscale ---------- */
+
+// Tailscale gives this PC a private address that only your own signed-in devices can reach
+// (100.64.0.0 to 100.127.255.255). The site answers there as well as on this PC, and nowhere else:
+// not on your home Wi-Fi, and not on the internet. Set LIFE_PHONE=off to turn it off.
+const phone = { ip: '', names: [] };
+
+function allowedHosts() {
+  const names = [HOST, 'localhost'];
+  if (phone.ip) names.push(phone.ip, ...phone.names);
+  return names.map((name) => `${name}:${PORT}`);
+}
+
+function tailscaleAddress() {
+  for (const list of Object.values(os.networkInterfaces())) {
+    for (const address of list || []) {
+      if (address.family !== 'IPv4' && address.family !== 4) continue;
+      const [first, second] = address.address.split('.').map(Number);
+      if (first === 100 && second >= 64 && second <= 127) return address.address;
+    }
+  }
+  return '';
+}
+
+// The names your phone can use instead of the number, like ahmed-pc or ahmed-pc.tailxxxx.ts.net.
+function tailscaleNames() {
+  const exe = process.platform === 'win32' ? 'C:\\Program Files\\Tailscale\\tailscale.exe' : 'tailscale';
+  return new Promise((resolve) => {
+    execFile(exe, ['status', '--json'], { timeout: 5000, windowsHide: true }, (error, stdout) => {
+      const names = new Set([os.hostname().toLowerCase()]);
+      try {
+        const full = String(JSON.parse(stdout).Self.DNSName || '').replace(/\.$/, '').toLowerCase();
+        if (full) { names.add(full); names.add(full.split('.')[0]); }
+      } catch { /* Tailscale's own tool is not available: the address and the PC name still work. */ }
+      resolve([...names].filter((name) => /^[a-z0-9.-]+$/.test(name)));
+    });
+  });
+}
+
+async function startPhoneAccess(handler) {
+  if (process.env.LIFE_PHONE === 'off') return;
+  const ip = tailscaleAddress();
+  if (!ip) {
+    // Tailscale may start a little after Windows does. Keep looking.
+    setTimeout(() => startPhoneAccess(handler), 30 * 1000).unref();
+    return;
+  }
+  const names = await tailscaleNames();
+  const server = http.createServer(handler);
+  server.on('error', (error) => {
+    console.error(`Phone access could not start (${error.code}). Trying again in a minute.`);
+    phone.ip = '';
+    setTimeout(() => startPhoneAccess(handler), 60 * 1000).unref();
+  });
+  server.listen(PORT, ip, () => {
+    phone.ip = ip;
+    phone.names = names;
+    const short = names.find((name) => !name.includes('.')) || ip;
+    console.log(`On your phone (with Tailscale on): http://${short}:${PORT}  or  http://${ip}:${PORT}`);
+  });
 }
 
 async function route(req, res) {
@@ -454,14 +518,15 @@ async function main() {
   await fsp.mkdir(PHOTOS_DIR, { recursive: true });
   await fsp.mkdir(BACKUPS_DIR, { recursive: true });
 
-  const server = http.createServer((req, res) => {
+  const handler = (req, res) => {
     route(req, res).catch((error) => {
       const status = error.status || 500;
       if (status === 500 && !error.status) console.error(error);
       if (res.headersSent) res.destroy();
       else sendJson(res, status, { error: error.status ? error.message : 'Something went wrong while saving or loading.' });
     });
-  });
+  };
+  const server = http.createServer(handler);
 
   server.on('error', async (error) => {
     if (error.code !== 'EADDRINUSE') throw error;
@@ -487,6 +552,7 @@ async function main() {
     console.log(`habit_tracker is running at ${URL_BASE}`);
     console.log('Keep this window open while you use it. Close it when you are done.');
     openBrowser();
+    startPhoneAccess(handler);
   });
 }
 
