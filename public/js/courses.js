@@ -2,6 +2,7 @@
 import { todayISO } from './schema.js';
 import { updateItem } from './store.js';
 import { feedHabit } from './habits.js';
+import { backend } from './backend.js';
 
 // The playlist link: the one given for it, or a playlist pasted into the course's Link field.
 export function playlistLink(course) {
@@ -12,21 +13,7 @@ export function playlistLink(course) {
 export const watchUrl = (course, video) =>
   `https://www.youtube.com/watch?v=${encodeURIComponent(video.id)}${course.playlistId ? `&list=${encodeURIComponent(course.playlistId)}` : ''}`;
 
-async function readPlaylist(url) {
-  let response;
-  try {
-    response = await fetch('/api/playlist', {
-      method: 'POST',
-      headers: { 'X-Habit-Tracker': '1', 'Content-Type': 'application/json' },
-      body: JSON.stringify({ url }),
-    });
-  } catch {
-    throw new Error('Could not reach habit_tracker. Make sure its window is still open.');
-  }
-  const body = await response.json().catch(() => null);
-  if (!response.ok) throw new Error((body && body.error) || 'The playlist could not be read.');
-  return body;
-}
+const readPlaylist = (url) => backend.readPlaylist(url);
 
 // Fetches the playlist and stores its videos on the course. Ticks you already made are kept.
 export async function loadPlaylist(course) {

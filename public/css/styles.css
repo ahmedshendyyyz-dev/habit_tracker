@@ -981,6 +981,18 @@ body.has-focus-overlay { overflow: hidden; }
   .focus-cell.is-now::after { transition: none; }
 }
 
+/* ---------- Signing in ---------- */
+
+body.signed-out .topbar, body.signed-out .bottom-nav, body.signed-out .focus-pill { display: none; }
+.signin {
+  width: min(100%, 380px); margin: 48px auto; padding: 32px 24px;
+  display: grid; gap: 10px;
+}
+.signin h1 { font-size: 22px; font-weight: 400; text-align: center; }
+.signin > .muted { text-align: center; margin-bottom: 8px; }
+.signin .btn { margin-top: 8px; }
+.signin-mark { --cell: 14px; display: grid; grid-template-columns: repeat(3, 14px); gap: 4px; justify-content: center; margin-bottom: 8px; }
+
 /* ---------- Toast ---------- */
 
 .toast {

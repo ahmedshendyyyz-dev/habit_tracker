@@ -8,6 +8,7 @@ import { tasksLeftToday } from './tasksView.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
 import { resumeSession, sessionIndicator } from './focusSession.js';
+import { backend } from './backend.js';
 
 const app = document.getElementById('app');
 const brand = document.getElementById('brand');
@@ -175,13 +176,59 @@ function render({ fresh }) {
   }
 }
 
+/* ---------- Signing in ---------- */
+
+function showSignIn(message) {
+  document.body.classList.add('signed-out');
+  const email = h('input', { id: 'signin-email', type: 'email', autocomplete: 'username', required: true, class: 'focus-input' });
+  const password = h('input', { id: 'signin-password', type: 'password', autocomplete: 'current-password', required: true, class: 'focus-input' });
+  const error = h('p', { class: 'form-error', role: 'alert' }, message || '');
+  const button = h('button', { class: 'btn btn-primary btn-large', type: 'submit' }, 'Sign in');
+  app.replaceChildren(h('form', {
+    class: 'signin box',
+    onsubmit: async (event) => {
+      event.preventDefault();
+      error.textContent = '';
+      button.disabled = true;
+      button.textContent = 'Signing in…';
+      try {
+        await backend.signIn(email.value.trim(), password.value);
+        window.location.reload();
+      } catch (problem) {
+        error.textContent = problem.message;
+        button.disabled = false;
+        button.textContent = 'Sign in';
+      }
+    },
+  },
+    h('div', { class: 'signin-mark', 'aria-hidden': 'true' }, [3, 1, 4, 2, 4, 3, 0, 2, 4].map((level) => h('span', { class: 'grid-day', 'data-level': level }))),
+    h('h1', {}, 'Sign in to habit_tracker'),
+    h('p', { class: 'muted' }, 'Your data is private to your account.'),
+    h('label', { class: 'focus-label', for: 'signin-email' }, 'Email'), email,
+    h('label', { class: 'focus-label', for: 'signin-password' }, 'Password'), password,
+    error,
+    button));
+  setTimeout(() => email.focus(), 50);
+}
+
+// Makes the app installable on your phone and PC, and lets it open even with a weak connection.
+function registerAppInstall() {
+  if (!('serviceWorker' in navigator) || backend.name === 'local') return;
+  navigator.serviceWorker.register('sw.js').catch(() => { /* The app still works; it just will not be installable. */ });
+}
+
 async function start() {
+  registerAppInstall();
   try {
+    if (!(await backend.currentUser())) { showSignIn(); return; }
     await load();
   } catch (error) {
-    app.replaceChildren(h('div', { class: 'box blankslate' }, h('h3', {}, 'habit_tracker could not load'), h('p', {}, error.message)));
+    if (error.status === 401) { showSignIn(error.message); return; }
+    app.replaceChildren(h('div', { class: 'box blankslate' }, h('h3', {}, 'habit_tracker could not load'), h('p', {}, error.message),
+      h('button', { class: 'btn', type: 'button', onclick: () => window.location.reload() }, 'Try again')));
     return;
   }
+  document.body.classList.remove('signed-out');
   render({ fresh: true });
   resumeSession();
   window.addEventListener('hashchange', () => {

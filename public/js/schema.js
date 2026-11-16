@@ -360,8 +360,12 @@ export function displayTitle(key, item) {
   return key === 'journal' ? formatDate(item.date) || 'Journal entry' : 'Untitled';
 }
 
+// Where a photo can be shown from. The store sets this once it knows (private links from Supabase).
+let resolvePhoto = (name) => `photos/${encodeURIComponent(name)}`;
+export function setPhotoResolver(resolver) { resolvePhoto = resolver; }
+
 export function photoUrl(name) {
-  return `/photos/${encodeURIComponent(name)}`;
+  return resolvePhoto(name);
 }
 
 export function coverPhoto(item) {

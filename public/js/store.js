@@ -1,39 +1,18 @@
-// Loads and saves your data through the local server.
-import { COLLECTIONS } from './schema.js';
+// Loads and saves your data: in Supabase normally, or the local server when testing with ?local.
+import { COLLECTIONS, setPhotoResolver } from './schema.js';
+import { backend } from './backend.js';
 
 const state = { rev: 0, items: {} };
-
-const HEADERS = { 'X-Habit-Tracker': '1' };
-
-async function request(url, options) {
-  let response;
-  try {
-    response = await fetch(url, options);
-  } catch {
-    throw new Error('Could not reach habit_tracker. Make sure the "habit_tracker" window is still open.');
-  }
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    // Handled by the status check below.
-  }
-  if (!response.ok) {
-    const error = new Error((body && body.error) || 'Something went wrong. Please try again.');
-    error.status = response.status;
-    throw error;
-  }
-  return body;
-}
 
 // Takes in the newest saved data, for example after your phone saved something.
 function adopt(data) {
   state.rev = data.rev;
-  state.items = data.items;
+  state.items = data.items || {};
   // Sections added in newer versions start out empty.
   for (const key of Object.keys(COLLECTIONS)) {
     if (!Array.isArray(state.items[key])) state.items[key] = [];
   }
+  refreshPhotos();
 }
 
 export function items(key) {
@@ -44,8 +23,13 @@ export function findItem(key, id) {
   return items(key).find((item) => item.id === id);
 }
 
+// Everything, for downloading a copy of your data.
+export function snapshot() {
+  return { version: 1, rev: state.rev, items: structuredClone(state.items) };
+}
+
 export async function load() {
-  adopt(await request('/api/data'));
+  adopt(await backend.fetchData());
   await moveOldSections();
 }
 
@@ -66,8 +50,8 @@ async function moveOldSections() {
 // One save at a time, so quick actions cannot overwrite each other.
 let queue = Promise.resolve();
 
-// Every change is a small function applied to a fresh copy of the data. If another device or tab
-// saved first, the server refuses with 409; then the newest data is loaded and the same change is
+// Every change is a small function applied to a fresh copy of the data. If another device saved
+// first, the save is refused with 409; then the newest data is loaded and the same change is
 // applied again on top of it, so neither change is lost.
 export function commit(change) {
   const run = async () => {
@@ -76,13 +60,8 @@ export function commit(change) {
       const next = structuredClone(state.items);
       change(next);
       try {
-        const result = await request('/api/data', {
-          method: 'PUT',
-          headers: { ...HEADERS, 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rev: state.rev, items: next }),
-        });
+        state.rev = await backend.saveData(state.rev, next);
         state.items = next;
-        state.rev = result.rev;
         window.dispatchEvent(new Event('life:changed'));
         return;
       } catch (error) {
@@ -90,7 +69,7 @@ export function commit(change) {
           if (pulled) window.dispatchEvent(new Event('life:changed'));
           throw error;
         }
-        adopt(await request('/api/data'));
+        adopt(await backend.fetchData());
         pulled = true;
       }
     }
@@ -100,13 +79,13 @@ export function commit(change) {
   return result;
 }
 
-// Asks the server whether anything changed since this page loaded, and takes it in if so.
+// Asks whether anything changed since this page loaded, and takes it in if so.
 // Runs in the same queue as saves, so it never lands in the middle of one.
 export function checkForChanges() {
   const run = async () => {
-    const { rev } = await request('/api/rev');
+    const rev = await backend.fetchRev();
     if (rev === state.rev) return false;
-    adopt(await request('/api/data'));
+    adopt(await backend.fetchData());
     window.dispatchEvent(new Event('life:remote'));
     return true;
   };
@@ -152,15 +131,48 @@ export function deleteItem(key, id) {
   });
 }
 
-export async function uploadPhoto(file) {
-  const match = /\.[A-Za-z0-9]+$/.exec(file.name);
-  const ext = match ? match[0].toLowerCase() : '';
-  const result = await request(`/api/photos?ext=${encodeURIComponent(ext)}`, {
-    method: 'POST',
-    headers: { ...HEADERS, 'Content-Type': 'application/octet-stream' },
-    body: file,
-  });
-  return result.name;
+/* ---------- Photos ---------- */
+
+// Photos are private, so each one is shown through a link that is made for you when the app loads.
+const photoLinks = new Map();
+const TRANSPARENT = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+setPhotoResolver((name) => photoLinks.get(name) || TRANSPARENT);
+
+const PHOTO_FIELDS = ['photos', 'beforePhotos', 'afterPhotos', 'photo'];
+
+export function allPhotoNames(source = state.items) {
+  const names = new Set();
+  for (const list of Object.values(source || {})) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      for (const field of PHOTO_FIELDS) {
+        if (Array.isArray(item && item[field])) item[field].forEach((name) => { if (typeof name === 'string' && name) names.add(name); });
+      }
+    }
+  }
+  return [...names];
+}
+
+async function refreshPhotos() {
+  const missing = allPhotoNames().filter((name) => !photoLinks.has(name));
+  if (!missing.length) return;
+  try {
+    const links = await backend.photoUrls(missing);
+    let added = false;
+    for (const [name, url] of Object.entries(links)) { photoLinks.set(name, url); added = true; }
+    if (added) window.dispatchEvent(new Event('life:rerender'));
+  } catch {
+    // Photos stay blank until the next load. Everything else keeps working.
+  }
+}
+
+export async function uploadPhoto(file, name) {
+  const saved = await backend.uploadPhoto(file, name);
+  if (!photoLinks.has(saved)) {
+    // Show the photo straight away from the file you picked, until a proper link is made on the next load.
+    photoLinks.set(saved, URL.createObjectURL(file));
+  }
+  return saved;
 }
 
 // Your profile, or a starting one until you save your own.
