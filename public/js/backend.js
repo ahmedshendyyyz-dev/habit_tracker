@@ -140,6 +140,55 @@ const cloud = {
     return names;
   },
 
+  /* Notifications */
+
+  async getNotifySettings() {
+    const sb = await supabase();
+    const { data, error } = await sb.from('notify_settings').select('enabled, prefs').maybeSingle();
+    if (error) throw plain(error, 'Notification settings could not be loaded.');
+    return data;
+  },
+
+  async saveNotifySettings(enabled, prefs) {
+    const sb = await supabase();
+    const { error } = await sb.from('notify_settings').upsert({ user_id: user.id, enabled, prefs, updated_at: new Date().toISOString() });
+    if (error) throw plain(error, 'Notification settings were not saved.');
+  },
+
+  async addDevice(subscription, device) {
+    const sb = await supabase();
+    const json = subscription.toJSON();
+    const { error } = await sb.from('push_subscriptions').upsert(
+      { user_id: user.id, endpoint: json.endpoint, p256dh: json.keys.p256dh, auth: json.keys.auth, device },
+      { onConflict: 'endpoint' },
+    );
+    if (error) throw plain(error, 'This device could not be added.');
+  },
+
+  async removeDevice(endpoint) {
+    const sb = await supabase();
+    const { error } = await sb.from('push_subscriptions').delete().eq('endpoint', endpoint);
+    if (error) throw plain(error, 'This device could not be removed.');
+  },
+
+  async deviceCount() {
+    const sb = await supabase();
+    const { count, error } = await sb.from('push_subscriptions').select('id', { count: 'exact', head: true });
+    if (error) throw plain(error, 'Devices could not be counted.');
+    return count || 0;
+  },
+
+  async sendTestNotification() {
+    const sb = await supabase();
+    const { data, error } = await sb.functions.invoke('notify', { body: { test: true } });
+    if (error) {
+      let message = 'The test notification was not sent.';
+      try { message = (await error.context.json()).error || message; } catch { /* Keep the general message. */ }
+      throw failure(message, 400);
+    }
+    return data;
+  },
+
   async readPlaylist(url) {
     const sb = await supabase();
     const { data, error } = await sb.functions.invoke('playlist', { body: { url } });
@@ -209,6 +258,7 @@ const local = {
     return Object.fromEntries(names.map((name) => [name, `photos/${encodeURIComponent(name)}`]));
   },
   existingPhotos: async () => new Set(),
+  notificationsOnline: false,
   async readPlaylist(url) {
     return request('api/playlist', { method: 'POST', headers: { ...HEADERS, 'Content-Type': 'application/json' }, body: JSON.stringify({ url }) });
   },

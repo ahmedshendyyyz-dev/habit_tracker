@@ -4,6 +4,7 @@ import { icon } from './icons.js';
 import { boxSection, counter } from './components.js';
 import { backend } from './backend.js';
 import { allPhotoNames, snapshot, uploadPhoto } from './store.js';
+import { notifyBox } from './notifyView.js';
 
 const when = (iso) => {
   const date = new Date(iso);
@@ -177,7 +178,7 @@ function importBox() {
 export function settingsPage() {
   const body = h('div', { class: 'stack' }, h('p', { class: 'muted' }, 'Loading…'));
   backend.listBackups()
-    .then((backups) => body.replaceChildren(accountBox(), importBox() || '', downloadBox(), restoreBox(backups)))
+    .then((backups) => body.replaceChildren(accountBox(), notifyBox(), importBox() || '', downloadBox(), restoreBox(backups)))
     .catch((error) => body.replaceChildren(accountBox(), h('div', { class: 'box blankslate' }, h('h3', {}, 'Settings could not load'), h('p', {}, error.message))));
   return [
     h('div', { class: 'subhead' }, h('div', { class: 'subhead-text' }, h('h1', {}, 'Settings'), h('p', {}, 'Your account, your backups, and moving your data.'))),

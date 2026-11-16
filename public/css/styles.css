@@ -993,6 +993,19 @@ body.signed-out .topbar, body.signed-out .bottom-nav, body.signed-out .focus-pil
 .signin .btn { margin-top: 8px; }
 .signin-mark { --cell: 14px; display: grid; grid-template-columns: repeat(3, 14px); gap: 4px; justify-content: center; margin-bottom: 8px; }
 
+/* ---------- Notifications ---------- */
+
+.notify-line { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+.notify-indent { padding-left: 26px; }
+.notify-check { display: inline-flex; align-items: center; gap: 8px; }
+.notify-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--btn-primary); }
+.notify-minutes { width: 72px; }
+.prayer-table { display: grid; gap: 4px; max-width: 420px; }
+.prayer-row { display: grid; grid-template-columns: 90px 1fr auto; align-items: center; gap: 12px; padding: 4px 0; border-bottom: 1px solid var(--border-muted); }
+.prayer-name { font-weight: 600; }
+.prayer-time { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.prayer-adjust { display: inline-flex; align-items: center; gap: 6px; }
+
 /* ---------- Toast ---------- */
 
 .toast {

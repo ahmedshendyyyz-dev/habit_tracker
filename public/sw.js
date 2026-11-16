@@ -13,6 +13,34 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
+// A reminder from the notify function: show it, even when the app is closed.
+self.addEventListener('push', (event) => {
+  let message = {};
+  try { message = event.data ? event.data.json() : {}; } catch { message = { body: event.data ? event.data.text() : '' }; }
+  event.waitUntil(self.registration.showNotification(message.title || 'habit_tracker', {
+    body: message.body || '',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    tag: message.tag || undefined,
+    data: { url: message.url || '#/' },
+  }));
+});
+
+// Tapping a notification opens the app on the right page, reusing an open window if there is one.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data && event.notification.data.url ? event.notification.data.url : '#/', self.registration.scope).href;
+  event.waitUntil((async () => {
+    const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const open = windows.find((client) => client.url.startsWith(self.registration.scope));
+    if (open) {
+      await open.focus();
+      return open.navigate ? open.navigate(target) : null;
+    }
+    return self.clients.openWindow(target);
+  })());
+});
+
 self.addEventListener('fetch', (event) => {
   const request = event.request;
   // Only the app's own files. Supabase, YouTube and the code library are never touched.
