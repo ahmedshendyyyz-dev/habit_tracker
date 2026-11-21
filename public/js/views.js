@@ -1,6 +1,6 @@
 // Builds each page from your saved data.
 import { COLLECTIONS, COLLECTION_KEYS, HUBS, coverPhoto, dateRange, displayTitle, formatDate, photoUrl, sortItems, todayISO } from './schema.js';
-import { h, openLightbox, toast } from './ui.js';
+import { h, openLightbox, showDialog, toast } from './ui.js';
 import { findItem, items, profile, saveItem } from './store.js';
 import { openForm } from './form.js';
 import { icon, SECTION_ICONS } from './icons.js';
@@ -239,18 +239,61 @@ function weekNotes() {
       h('div', {}, h('strong', {}, 'Time for your weekly review. '), h('a', { href: '#/journal' }, 'Look back at your week'))));
 }
 
+// The parts of Today, in order. You can hide any of them with "Choose what Today shows".
+const TODAY_SECTIONS = [
+  ['notes', 'This week\'s focus and the review reminder', () => weekNotes()],
+  ['snapshot', 'The four numbers at the top', (events) => snapshot(events)],
+  ['tasks', 'Today\'s tasks', () => todayTasksBox()],
+  ['habits', 'Habits', () => todayHabitsBox()],
+  ['goals', 'Goals in progress', () => pinnedGoals()],
+  ['grid', 'The activity grid', (events) => activityGrid(events)],
+  ['feed', 'The activity list', (events) => activityFeed(events)],
+];
+const hiddenOnToday = () => new Set((profile() && profile().todayHide) || []);
+
+function chooseTodaySections() {
+  const hidden = hiddenOnToday();
+  const boxes = TODAY_SECTIONS.map(([key, label]) => h('label', { class: 'check-line' },
+    h('input', { type: 'checkbox', name: key, checked: !hidden.has(key) }), h('span', {}, label)));
+  const dialog = h('dialog', { 'aria-label': 'Choose what Today shows' });
+  const form = h('form', {
+    method: 'dialog',
+    onsubmit: async (event) => {
+      event.preventDefault();
+      const todayHide = TODAY_SECTIONS.map(([key]) => key).filter((key) => !form.elements[key].checked);
+      dialog.close();
+      try {
+        const me = profile();
+        if (me) await updateItem('profile', me.id, (latest) => { latest.todayHide = todayHide; });
+        else await saveItem('profile', { id: crypto.randomUUID(), createdAt: new Date().toISOString(), name: DEFAULT_NAME, todayHide });
+        toast('Today updated');
+      } catch (error) {
+        toast(`Not saved: ${error.message}`, true);
+      }
+    },
+  },
+  h('div', { class: 'dialog-header' }, h('h2', {}, 'Choose what Today shows'),
+    h('button', { class: 'btn-icon btn-invisible', type: 'button', 'aria-label': 'Close', onclick: () => dialog.close() }, icon('close'))),
+  h('div', { class: 'dialog-body' },
+    h('p', {}, 'Untick what you do not need. This is saved for all your devices.'),
+    h('div', { class: 'check-list' }, boxes)),
+  h('div', { class: 'dialog-footer' },
+    h('button', { class: 'btn', type: 'button', onclick: () => dialog.close() }, 'Cancel'),
+    h('button', { class: 'btn btn-primary', type: 'submit' }, 'Save')));
+  dialog.append(form);
+  showDialog(dialog);
+}
+
 function todayPage() {
   const events = activityEvents();
+  const hidden = hiddenOnToday();
   return [h('div', { class: 'profile-layout' },
     profileCard(),
     h('div', { class: 'profile-main' },
-      weekNotes(),
-      snapshot(events),
-      todayTasksBox(),
-      todayHabitsBox(),
-      pinnedGoals(),
-      activityGrid(events),
-      activityFeed(events)))];
+      // On phones the profile is hidden, so the date sits here instead.
+      h('h1', { class: 'today-heading' }, new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })),
+      TODAY_SECTIONS.filter(([key]) => !hidden.has(key)).map(([, , draw]) => draw(events)),
+      h('button', { class: 'btn btn-small btn-invisible today-customize', type: 'button', onclick: chooseTodaySections }, icon('gear'), 'Choose what Today shows')))];
 }
 
 /* ---------- Section pages ---------- */

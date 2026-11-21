@@ -1,6 +1,6 @@
 // How habits are scored, logged and turned into streaks.
 import { HABIT_TYPES, dayOf, todayISO } from './schema.js';
-import { items, updateItem } from './store.js';
+import { commit, items, updateItem } from './store.js';
 import { addDays, parseDay } from './tasks.js';
 
 export const checklistItems = (habit) => (habit.items || '').split('\n').map((line) => line.trim()).filter(Boolean);
@@ -25,8 +25,25 @@ export function isScheduledOn(habit, day) {
   return !days.length || days.includes(parseDay(day).getDay());
 }
 
+// Your own order first (set with Reorder on the Habits page), then the order you made them in.
+const orderOf = (habit) => (habit.order === undefined || habit.order === '' || !Number.isFinite(Number(habit.order)) ? Infinity : Number(habit.order));
 export function sortedHabits() {
-  return [...items('habits')].sort((a, b) => (a.createdAt || '').localeCompare(b.createdAt || ''));
+  return [...items('habits')].sort((a, b) => (orderOf(a) - orderOf(b)) || (a.createdAt || '').localeCompare(b.createdAt || ''));
+}
+
+// Moves a habit up (-1) or down (+1) and saves the new order of every habit at once.
+export function moveHabit(id, direction) {
+  const ids = sortedHabits().map((habit) => habit.id);
+  const from = ids.indexOf(id);
+  const to = from + direction;
+  if (from === -1 || to < 0 || to >= ids.length) return Promise.resolve();
+  [ids[from], ids[to]] = [ids[to], ids[from]];
+  return commit((next) => {
+    for (const habit of next.habits) {
+      const index = ids.indexOf(habit.id);
+      if (index !== -1) habit.order = index;
+    }
+  });
 }
 
 export function habitsOn(day) {
@@ -107,6 +124,14 @@ function writeLog(habit, day, change) {
 }
 
 export const setChecked = (habit, day, done) => writeLog(habit, day, () => (done ? 1 : 0));
+
+// One tap to finish a habit for the day, whatever its type; tapping again clears the day.
+export const setComplete = (habit, day, done) => writeLog(habit, day, (value, latest) => {
+  if (!done) return 0;
+  if (latest.type === HABIT_TYPES.list) return checklistItems(latest).map((_, index) => index);
+  if (latest.type === HABIT_TYPES.number) return Math.max(Number(value) || 0, targetOf(latest));
+  return 1;
+});
 
 export const setAmount = (habit, day, amount) => writeLog(habit, day, () => Math.max(0, Math.round((Number(amount) || 0) * 100) / 100));
 

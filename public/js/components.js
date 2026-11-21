@@ -8,7 +8,7 @@ import { icon, SECTION_ICONS } from './icons.js';
 export const rerender = () => window.dispatchEvent(new Event('life:rerender'));
 
 // Remembers small view choices, like the open or done tab, until the page reloads.
-export const viewState = { bucketTab: 'open', feedLimit: 20, tasksView: 'week', weekOffset: 0, habitLogDay: {} };
+export const viewState = { bucketTab: 'open', feedLimit: 5, showDoneHabits: false, reorderHabits: false, tasksView: 'week', weekOffset: 0, habitLogDay: {} };
 
 export function newButton(key, defaults, label) {
   return h('button', {

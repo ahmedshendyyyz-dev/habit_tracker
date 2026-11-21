@@ -23,9 +23,9 @@ const MORE_TABS = [...COLLECTION_KEYS.filter((key) => !PRIMARY_TABS.includes(key
 const tabLabel = (key) => (key === 'settings' ? 'Settings' : HUBS[key] ? HUBS[key].label : COLLECTIONS[key].label);
 
 // On phones, a bar at the bottom holds the pages you use every day. The rest open from More.
-const BOTTOM_TABS = [['', 'Today', 'home'], ['tasks', 'Tasks', 'calendar'], ['habits', 'Habits', 'check'], ['journal', 'Reflect', 'book']];
-const SHEET_TABS = ['goals', 'health', 'learning', 'bucket', 'trips', ...MORE_TABS];
-const SHEET_ICONS = { goals: 'target', health: 'tool', learning: 'box', bucket: 'check', trips: 'pin', projects: 'box', wishlist: 'list', settings: 'gear' };
+const BOTTOM_TABS = [['', 'Today', 'home'], ['tasks', 'Tasks', 'calendar'], ['habits', 'Habits', 'check'], ['goals', 'Goals', 'target']];
+const SHEET_TABS = ['health', 'learning', 'journal', 'bucket', 'trips', ...MORE_TABS];
+const SHEET_ICONS = { journal: 'book', goals: 'target', health: 'tool', learning: 'box', bucket: 'check', trips: 'pin', projects: 'box', wishlist: 'list', settings: 'gear' };
 const bottomNav = document.getElementById('bottom-nav');
 
 /* ---------- Light and dark mode ---------- */

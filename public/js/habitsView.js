@@ -9,7 +9,7 @@ import { contributionGrid } from './grid.js';
 import { addDays, parseDay } from './tasks.js';
 import {
   amountOn, bestStreak, checklistItems, currentStreak, describeDay, formatAmount, habitLevels, habitsOn,
-  isMetOn, isScheduledOn, setAmount, setChecked, sortedHabits, starterHabits, stepAmount, targetOf, toggleListItem,
+  isMetOn, isScheduledOn, moveHabit, setAmount, setChecked, setComplete, sortedHabits, starterHabits, stepAmount, targetOf, toggleListItem,
 } from './habits.js';
 
 const dayCount = (count) => `${count} ${count === 1 ? 'day' : 'days'}`;
@@ -97,14 +97,35 @@ export function habitControl(habit, day) {
   }, icon('checkSmall'), done ? 'Done' : 'Mark done');
 }
 
+// The round button before every habit: one tap marks the whole day done, a second tap clears it.
+export function habitCheck(habit, day) {
+  const met = isMetOn(habit, day);
+  const title = displayTitle('habits', habit);
+  const when = day === todayISO() ? 'today' : `on ${formatDate(day)}`;
+  return h('button', {
+    class: `habit-check${met ? ' is-on' : ''}`,
+    type: 'button',
+    'aria-pressed': String(met),
+    'aria-label': met ? `${title} is done ${when}. Tap to clear it` : `Mark ${title} done ${when}`,
+    title: met ? 'Done. Tap to clear' : 'Mark done',
+    'data-focus': `habit-${habit.id}-${day}-done`,
+    onclick: () => save(setComplete(habit, day, !met)),
+  }, icon('checkSmall'));
+}
+
+// Yes-or-no habits need nothing besides the round button.
+const extraControl = (habit, day) => (habit.type === HABIT_TYPES.number || habit.type === HABIT_TYPES.list
+  ? h('div', { class: 'habit-control' }, habitControl(habit, day))
+  : null);
+
 function habitRow(habit, day) {
   const met = isMetOn(habit, day);
   return h('li', { class: `list-row habit-row${met ? ' is-met' : ''}` },
-    icon(met ? 'check' : 'circle', `icon row-icon${met ? ' is-success' : ''}`),
+    habitCheck(habit, day),
     h('div', { class: 'row-main' },
       h('div', { class: 'row-title' }, h('a', { href: `#/habits/${habit.id}` }, displayTitle('habits', habit))),
       h('p', { class: 'muted small' }, `${goalLabel(habit)} · ${streakText(habit)}`)),
-    h('div', { class: 'habit-control' }, habitControl(habit, day)));
+    extraControl(habit, day));
 }
 
 /* ---------- Today ---------- */
@@ -145,9 +166,29 @@ export function todayHabitsBox() {
     h('div', { class: 'box-header' },
       h('h2', {}, 'Habits', h('span', { class: 'muted box-header-note' }, `${done} of ${total} done`)),
       h('a', { class: 'small', href: '#/habits' }, 'All habits')),
-    list.length
-      ? h('ul', { class: 'list' }, list.map((habit) => habitRow(habit, today)))
-      : h('p', { class: 'box-note muted' }, 'No habits planned for today.'));
+    list.length ? habitList(list, today) : h('p', { class: 'box-note muted' }, 'No habits planned for today.'));
+}
+
+// What is left stays as full rows. What is done folds into one line you can open.
+function habitList(list, day) {
+  const left = list.filter((habit) => !isMetOn(habit, day));
+  const done = list.filter((habit) => isMetOn(habit, day));
+  const open = viewState.showDoneHabits || !left.length;
+  const shown = open ? list : left;
+  const toggle = (show, ...content) => h('li', { class: 'habits-done-row' },
+    h('button', {
+      class: 'habits-done-toggle',
+      type: 'button',
+      'aria-expanded': String(!show),
+      onclick: () => { viewState.showDoneHabits = show; rerender(); },
+    }, ...content));
+  return h('ul', { class: 'list' },
+    shown.map((habit) => habitRow(habit, day)),
+    !open && done.length > 0 && toggle(true,
+      icon('check', 'icon is-success'),
+      h('span', { class: 'habits-done-names' }, h('strong', {}, 'Done: '), done.map((habit) => displayTitle('habits', habit)).join(', ')),
+      h('span', { class: 'link small' }, 'Show')),
+    open && done.length > 0 && left.length > 0 && toggle(false, h('span', { class: 'link small' }, 'Hide done habits')));
 }
 
 // The longest streak running right now, for the snapshot.
@@ -170,17 +211,17 @@ function habitCard(habit) {
     ariaLabel: `${displayTitle('habits', habit)}, the last 26 weeks`,
     describe: (day) => `${describeDay(habit, day)} on ${formatDate(day)}`,
   });
+  const planned = isScheduledOn(habit, today);
   return h('section', { class: 'box habit-card' },
     h('div', { class: 'habit-card-head' },
+      planned && habitCheck(habit, today),
       h('div', { class: 'habit-card-title' },
         h('h2', {}, h('a', { href: `#/habits/${habit.id}` }, displayTitle('habits', habit))),
         h('p', { class: 'muted small' }, `${goalLabel(habit)} · ${scheduleLabel(habit)}`),
         h('p', { class: 'habit-streaks small' },
           h('span', { class: 'label label-success' }, streakText(habit)),
           h('span', { class: 'muted' }, `Best ${dayCount(bestStreak(habit))}`))),
-      isScheduledOn(habit, today)
-        ? h('div', { class: 'habit-control' }, habitControl(habit, today))
-        : h('span', { class: 'muted small' }, 'Not planned today')),
+      planned ? extraControl(habit, today) : h('span', { class: 'muted small' }, 'Not planned today')),
     h('div', { class: 'habit-card-grid' }, grid.element));
 }
 
@@ -199,9 +240,25 @@ export function habitsPage() {
       h('div', { class: 'btn-row' }, starterButton(), newButton('habits', undefined, 'New habit')))];
   }
   const { done, total } = habitCounts();
-  return [head,
-    h('p', { class: 'muted page-note' }, total ? `${done} of ${total} habits done today.` : 'No habits planned for today.'),
-    h('div', { class: 'stack' }, list.map(habitCard))];
+  const reordering = viewState.reorderHabits;
+  const bar = h('div', { class: 'page-note habits-bar' },
+    h('p', { class: 'muted' }, total ? `${done} of ${total} habits done today.` : 'No habits planned for today.'),
+    list.length > 1 && h('button', {
+      class: `btn btn-small${reordering ? ' btn-primary' : ''}`,
+      type: 'button',
+      onclick: () => { viewState.reorderHabits = !reordering; rerender(); },
+    }, reordering ? 'Done' : 'Reorder'));
+  if (reordering) {
+    const name = (habit) => displayTitle('habits', habit);
+    return [head, bar, h('section', { class: 'box' },
+      h('p', { class: 'box-note muted' }, 'Habits show in this order on Today and on this page.'),
+      h('ol', { class: 'list' }, list.map((habit, index) => h('li', { class: 'list-row reorder-row' },
+        h('span', { class: 'reorder-name' }, name(habit)),
+        h('div', { class: 'btn-row' },
+          h('button', { class: 'btn btn-small', type: 'button', disabled: index === 0, 'aria-label': `Move ${name(habit)} up`, 'data-focus': `move-${habit.id}-up`, onclick: () => save(moveHabit(habit.id, -1)) }, '↑'),
+          h('button', { class: 'btn btn-small', type: 'button', disabled: index === list.length - 1, 'aria-label': `Move ${name(habit)} down`, 'data-focus': `move-${habit.id}-down`, onclick: () => save(moveHabit(habit.id, 1)) }, '↓'))))))];
+  }
+  return [head, bar, h('div', { class: 'stack' }, list.map(habitCard))];
 }
 
 /* ---------- One habit ---------- */
