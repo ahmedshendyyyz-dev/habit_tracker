@@ -179,34 +179,27 @@ function activityGrid(events) {
     h('div', { class: 'box box-padded' }, grid.element));
 }
 
+// Today's activity stays folded behind one button, and only lists what happened today.
 function activityFeed(events) {
-  const past = events.filter((event) => event.day <= todayISO());
-  const shown = past.slice(0, viewState.feedLimit);
-  const head = h('div', { class: 'section-head' }, h('h2', {}, 'Activity'));
-  if (!shown.length) {
-    return h('section', { class: 'today-section' }, head, h('p', { class: 'muted' }, 'What you add and do will show up here.'));
-  }
-  const groups = [];
-  for (const event of shown) {
-    const [year, month] = event.day.split('-').map(Number);
-    const name = new Date(year, month - 1, 1).toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
-    if (!groups.length || groups[groups.length - 1].name !== name) groups.push({ name, events: [] });
-    groups[groups.length - 1].events.push(event);
-  }
-  return h('section', { class: 'today-section' }, head,
-    groups.map((group) => h('div', { class: 'feed-month' },
-      h('h3', { class: 'feed-month-name' }, h('span', {}, group.name)),
-      h('ol', { class: 'feed' }, group.events.map((event) => h('li', { class: 'feed-item' },
+  const today = events.filter((event) => event.day === todayISO());
+  const open = viewState.showActivity;
+  const toggle = h('button', {
+    class: 'btn btn-block',
+    type: 'button',
+    'aria-expanded': String(open),
+    onclick: () => { viewState.showActivity = !open; rerender(); },
+  }, open ? 'Hide activity' : `Show today's activity${today.length ? ` (${today.length})` : ''}`);
+  if (!open) return h('section', { class: 'today-section' }, toggle);
+  return h('section', { class: 'today-section' },
+    h('div', { class: 'section-head' }, h('h2', {}, 'Today\'s activity')),
+    today.length
+      ? h('ol', { class: 'feed' }, today.map((event) => h('li', { class: 'feed-item' },
         h('span', { class: 'feed-badge' }, icon(SECTION_ICONS[event.key])),
         h('p', {}, `${event.verb} `, event.item
           ? h('a', { href: `#/${event.key}/${event.item.id}` }, displayTitle(event.key, event.item))
-          : h('a', { href: event.href }, event.text)),
-        h('span', { class: 'muted small feed-date' }, formatDate(event.day))))))),
-    past.length > shown.length && h('button', {
-      class: 'btn btn-block',
-      type: 'button',
-      onclick: () => { viewState.feedLimit += 20; rerender(); },
-    }, 'Show more activity'));
+          : h('a', { href: event.href }, event.text)))))
+      : h('p', { class: 'muted' }, 'Nothing yet today. What you add and do shows up here.'),
+    toggle);
 }
 
 // Four numbers at the top of Today: how the day and the week are going.
@@ -247,7 +240,7 @@ const TODAY_SECTIONS = [
   ['habits', 'Habits', () => todayHabitsBox()],
   ['goals', 'Goals in progress', () => pinnedGoals()],
   ['grid', 'The activity grid', (events) => activityGrid(events)],
-  ['feed', 'The activity list', (events) => activityFeed(events)],
+  ['feed', 'The "Show today\'s activity" button', (events) => activityFeed(events)],
 ];
 const hiddenOnToday = () => new Set((profile() && profile().todayHide) || []);
 
