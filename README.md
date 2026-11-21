@@ -23,9 +23,9 @@ Every check-in, finished task and reached milestone becomes a square on a contri
 ### Daily
 | | |
 |---|---|
-| **Today** | Your profile, today's tasks and events, habit check-ins, goals in progress, a year-long contribution grid and an activity feed. |
-| **Habits** | Yes/no habits, number habits ("8 glasses of water") and checklists ("5 daily prayers"), with streaks and a grid for each habit. |
-| **Tasks** | A week planner with drag and drop, repeating tasks (daily, weekly, monthly, chosen days), events with times, and an overdue list. |
+| **Today** | Today's tasks and events, habit check-ins (finished habits fold into one line), goals in progress and a contribution grid. Choose which parts show with **Choose what Today shows**. |
+| **Habits** | Yes/no habits, number habits ("8 glasses of water") and checklists ("5 daily prayers"). One tap on the round button finishes any habit for the day. A compact list with the last 7 days, streaks, your own order, and a full grid on each habit's page. |
+| **Tasks** | A week planner with drag and drop, repeating tasks (daily, weekly, monthly, chosen days), events with times, and an overdue list with one-tap **Today**. |
 
 ### Growth
 | | |
@@ -59,6 +59,9 @@ Reminders arrive as real notifications on your phone and computer, even when the
 - **Light and dark mode**, with one click.
 - **Made for phones too**, with a bottom tab bar and big touch targets.
 - **Search everything** (press <kbd>/</kbd>).
+- **Undo** after deleting, clearing a habit, unticking a task or archiving.
+- **Archive** finished goals, habits, courses, books, trips, projects and list items. They leave your lists but keep their history, under **Show archived**.
+- **Google Calendar**: your tasks, events and milestones in Google Calendar through a private link (one-way).
 - **Backups**: a copy of your data from the start of every day (kept 90 days), one-click download, and restore.
 
 ---
@@ -124,6 +127,13 @@ habit_tracker is a personal app: each copy belongs to one person, and sign-ups a
 
 The private key and the cron secret are passwords: keep them only in Supabase's secrets, never in the code.
 
+### Optional: Google Calendar
+12. **Add the table.** Run [`supabase/calendar.sql`](supabase/calendar.sql) in the SQL Editor.
+13. **Add the feed.** Deploy [`supabase/functions/calendar/index.ts`](supabase/functions/calendar/index.ts) as a function named `calendar`, with **Verify JWT turned off**. Calendar apps cannot sign in, so a long secret token in the link is the key.
+14. In the app, open **Settings → Google Calendar → Make my calendar link**, copy it, and in Google Calendar choose **Other calendars → + → From URL**.
+
+The feed is one-way and Google refreshes it every few hours. Keep the link private. If it leaks, make a new one in Settings, and the old one stops working.
+
 ---
 
 ## Your data and privacy
@@ -145,6 +155,8 @@ Plain, dependency-light code that is easy to read and change.
 - **Photos:** Supabase Storage, shown through private links that are made fresh each time the app opens.
 - **YouTube playlists:** a Supabase Edge Function reads the public playlist page and checks you are signed in.
 - **Notifications:** Supabase Cron runs a second Edge Function every 5 minutes. It works out what is due from your data, sends standard Web Push notifications (encrypted and signed with the browser's built-in Web Crypto, no libraries), and remembers what it sent so nothing arrives twice.
+- **Calendar feed:** a third Edge Function turns your tasks and milestones into a standard `.ics` calendar, found by a secret token in the link.
+- **Tests:** `npm test` runs the app's own modules in Node against a pretend server held in memory (no packages to install). GitHub runs them before every publish, and a failing test stops the publish.
 - **Prayer times:** calculated from the sun's position in a few dozen lines of code, so there is no outside service to depend on.
 - **Installable:** a web app manifest and a small service worker. It always loads the latest version, and only keeps a fallback copy of the app's files, never your data.
 
@@ -164,20 +176,24 @@ habit_tracker/
 │       ├── grid.js          the contribution grid
 │       ├── prayer.js        prayer times for any day and city
 │       ├── notifyView.js    Settings → Notifications
+│       ├── calendarView.js  Settings → Google Calendar
 │       └── ...              one file per section (tasks, habits, goals, health, learning)
 ├── supabase/
 │   ├── setup.sql            tables, access rules, save and restore functions, photo storage
 │   ├── notifications.sql    notification settings, devices, and what was sent
 │   ├── notifications-cron.sql   the every-5-minutes schedule (a template)
+│   ├── calendar.sql         the secret link for the calendar feed
 │   └── functions/
 │       ├── playlist/        the YouTube playlist reader
-│       └── notify/          sends your reminders
+│       ├── notify/          sends your reminders
+│       └── calendar/        the Google Calendar feed
+├── tests/                   npm test: habits, Undo, tasks, goals, reminders, calendar
 ├── .github/workflows/       publishes the app on every push
 └── server.js                optional local server, for testing on a copy of your data
 ```
 
 ### Testing without touching your real data
-Run `node server.js` (needs [Node.js](https://nodejs.org) 18+) and open **http://127.0.0.1:4173/?local**. The `?local` switch makes the app use a `data` folder on your computer instead of Supabase. That folder is listed in `.gitignore`, so it never ends up on GitHub.
+Run `node server.js` (needs [Node.js](https://nodejs.org) 24+) and open **http://127.0.0.1:4173/?local**. The `?local` switch makes the app use a `data` folder on your computer instead of Supabase. That folder is listed in `.gitignore`, so it never ends up on GitHub.
 
 ---
 
@@ -196,8 +212,10 @@ Run `node server.js` (needs [Node.js](https://nodejs.org) 18+) and open **http:/
 
 - [x] Same data on phone and computer, installable as an app
 - [x] Phone reminders for tasks, habits, milestones, the weekly review and prayer times
-- [ ] Google Calendar events in the week planner
-- [ ] Undo for quick actions, and archiving old habits and goals
+- [x] Undo for quick actions, and archiving old habits and goals
+- [x] Tasks, events and milestones in Google Calendar (one-way)
+- [x] Automated tests that run before every publish
+- [ ] Google Calendar events shown in the week planner (two-way sync)
 
 ---
 

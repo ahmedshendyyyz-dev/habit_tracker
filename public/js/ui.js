@@ -16,13 +16,21 @@ export function h(tag, attrs = {}, ...children) {
 }
 
 let toastTimer;
-export function toast(message, isError = false) {
+// A short message at the bottom. With an action (like Undo) it stays a little longer.
+export function toast(message, isError = false, action = null) {
   const element = document.getElementById('toast');
-  element.textContent = message;
+  element.replaceChildren(h('span', {}, message));
+  if (action) {
+    element.append(h('button', {
+      class: 'toast-action',
+      type: 'button',
+      onclick: () => { element.hidden = true; action.onClick(); },
+    }, action.label));
+  }
   element.classList.toggle('is-error', isError);
   element.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { element.hidden = true; }, isError ? 7000 : 2800);
+  toastTimer = setTimeout(() => { element.hidden = true; }, isError || action ? 7000 : 2800);
 }
 
 // Opens a modal and removes it from the page again once it closes.

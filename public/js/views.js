@@ -1,12 +1,12 @@
 // Builds each page from your saved data.
 import { COLLECTIONS, COLLECTION_KEYS, HUBS, coverPhoto, dateRange, displayTitle, formatDate, photoUrl, sortItems, todayISO } from './schema.js';
 import { h, openLightbox, showDialog, toast } from './ui.js';
-import { findItem, items, profile, saveItem } from './store.js';
+import { activeItems, findItem, items, profile, saveItem } from './store.js';
 import { openForm } from './form.js';
 import { icon, SECTION_ICONS } from './icons.js';
 import { activityEvents, countByDay } from './activity.js';
 import { contributionGrid } from './grid.js';
-import { blankslate, boxSection, confirmDelete, counter, progressBar, rerender, stat, statusLabel, subhead, viewState } from './components.js';
+import { archiveButton, archivedSection, blankslate, boxSection, confirmDelete, counter, progressBar, rerender, stat, statusLabel, subhead, viewState } from './components.js';
 import { linkedTasks, taskDetails, taskDoneButton, tasksPage, todayCounts, todayTasksBox } from './tasksView.js';
 import { habitCounts, habitDetailPage, habitsPage, todayHabitsBox, topStreak } from './habitsView.js';
 import { addDays, formatTime, repeatLabel } from './tasks.js';
@@ -135,6 +135,13 @@ export function displayName() {
   return (me && me.name) || DEFAULT_NAME;
 }
 
+// Saves a few profile fields, making the profile first if you have not saved one yet.
+function saveProfile(fields) {
+  const me = profile();
+  if (me) return updateItem('profile', me.id, (latest) => Object.assign(latest, fields));
+  return saveItem('profile', { id: crypto.randomUUID(), createdAt: new Date().toISOString(), name: DEFAULT_NAME, ...fields });
+}
+
 function profileCard() {
   const me = profile();
   const editProfile = () => openForm('profile', me, { name: DEFAULT_NAME });
@@ -146,13 +153,21 @@ function profileCard() {
       h('p', { class: 'muted' }, new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' }))),
     me && me.bio
       ? h('p', { class: 'profile-bio' }, me.bio)
-      : h('p', { class: 'profile-bio muted' }, 'Add a short bio so this page feels like yours.'),
+      : !(me && me.hideBioHint) && h('p', { class: 'profile-bio muted bio-hint' },
+        h('span', {}, 'Add a short bio so this page feels like yours.'),
+        h('button', {
+          class: 'btn-icon btn-invisible',
+          type: 'button',
+          'aria-label': 'Hide this hint',
+          title: 'Hide this hint',
+          onclick: () => saveProfile({ hideBioHint: true }).catch((error) => toast(`Not saved: ${error.message}`, true)),
+        }, icon('close'))),
     h('button', { class: 'btn btn-block', type: 'button', 'data-edit-profile': true, onclick: editProfile }, 'Edit profile'),
     me && me.location && h('p', { class: 'profile-detail muted' }, icon('pin'), me.location));
 }
 
 function pinnedGoals() {
-  const open = items('goals')
+  const open = activeItems('goals')
     .filter((goal) => goalProgress(goal) < 100)
     .sort((a, b) => (a.horizon === b.horizon ? (a.targetDate || '9999').localeCompare(b.targetDate || '9999') : a.horizon === 'Short term' ? -1 : 1))
     .slice(0, 6);
@@ -175,7 +190,7 @@ function pinnedGoals() {
 function activityGrid(events) {
   const grid = contributionGrid(countByDay(events.filter((event) => event.day <= todayISO())));
   return h('section', { class: 'today-section' },
-    h('div', { class: 'section-head' }, h('h2', {}, `${grid.total} ${grid.total === 1 ? 'activity' : 'activities'} in the last year`)),
+    h('div', { class: 'section-head' }, h('h2', {}, `${grid.total} ${grid.total === 1 ? 'activity' : 'activities'} in ${grid.period}`)),
     h('div', { class: 'box box-padded' }, grid.element));
 }
 
@@ -256,9 +271,7 @@ function chooseTodaySections() {
       const todayHide = TODAY_SECTIONS.map(([key]) => key).filter((key) => !form.elements[key].checked);
       dialog.close();
       try {
-        const me = profile();
-        if (me) await updateItem('profile', me.id, (latest) => { latest.todayHide = todayHide; });
-        else await saveItem('profile', { id: crypto.randomUUID(), createdAt: new Date().toISOString(), name: DEFAULT_NAME, todayHide });
+        await saveProfile({ todayHide });
         toast('Today updated');
       } catch (error) {
         toast(`Not saved: ${error.message}`, true);
@@ -293,7 +306,7 @@ function todayPage() {
 
 function goalsPage() {
   const isFinished = (goal) => goalProgress(goal) >= 100;
-  const all = sortItems('goals', items('goals')).reverse()
+  const all = sortItems('goals', activeItems('goals')).reverse()
     .sort((a, b) => Number(isFinished(a)) - Number(isFinished(b)));
   if (!all.length) return [subhead('goals', 0), blankslate('goals')];
   const group = (horizon) => {
@@ -308,7 +321,7 @@ function goalsPage() {
 }
 
 function bucketPage() {
-  const all = sortItems('bucket', items('bucket'));
+  const all = sortItems('bucket', activeItems('bucket'));
   if (!all.length) return [subhead('bucket', 0), blankslate('bucket')];
   const todo = all.filter((item) => !item.done);
   const done = all.filter((item) => item.done);
@@ -336,7 +349,7 @@ function bucketPage() {
 
 function wishlistPage() {
   const rank = { High: 0, Medium: 1, Low: 2 };
-  const all = [...items('wishlist')].sort((a, b) => (rank[a.priority] ?? 1) - (rank[b.priority] ?? 1) || (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const all = [...activeItems('wishlist')].sort((a, b) => (rank[a.priority] ?? 1) - (rank[b.priority] ?? 1) || (b.createdAt || '').localeCompare(a.createdAt || ''));
   if (!all.length) return [subhead('wishlist', 0), blankslate('wishlist')];
   const want = all.filter((item) => !item.bought);
   const got = all.filter((item) => item.bought).sort((a, b) => (b.boughtDate || '').localeCompare(a.boughtDate || ''));
@@ -359,7 +372,7 @@ function wishlistPage() {
 }
 
 function projectsPage() {
-  const all = sortItems('projects', items('projects'));
+  const all = sortItems('projects', activeItems('projects'));
   if (!all.length) return [subhead('projects', 0), blankslate('projects')];
   const filter = viewState.projectType || 'All';
   const shown = filter === 'All' ? all : all.filter((item) => (item.type || 'Project') === filter);
@@ -380,7 +393,7 @@ function projectsPage() {
 }
 
 function listPage(key) {
-  const list = sortItems(key, items(key));
+  const list = sortItems(key, activeItems(key));
   if (!list.length) return [subhead(key, 0), blankslate(key)];
   const usesCards = ['trips', 'projects'].includes(key);
   return [
@@ -511,6 +524,7 @@ function detailPage(key, id) {
           type: 'button',
           onclick: () => bucketToGoal(item),
         }, icon('target'), 'Turn into a goal'),
+        ['bucket', 'wishlist', 'projects', 'trips', 'books'].includes(key) && archiveButton(key, item),
         h('button', { class: 'btn btn-danger', type: 'button', 'data-delete': true, onclick: () => confirmDelete(key, item) }, 'Delete'))),
     h('div', { class: 'stack' }, detailBody(key, item)),
   ];
@@ -545,7 +559,18 @@ function searchPage(query) {
 
 /* ---------- Routing ---------- */
 
+// Lists that can hold archived items show a "Show archived" link at the bottom.
+const ARCHIVED_UNDER = { goals: ['goals'], habits: ['habits'], bucket: ['bucket'], wishlist: ['wishlist'], projects: ['projects'], trips: ['trips'], learning: ['courses', 'books'] };
+
 export function renderRoute(hash) {
+  const result = route(hash);
+  const [, key, ...rest] = (hash || '').replace(/^#/, '').split('/');
+  const page = COLLECTIONS[key] && COLLECTIONS[key].parent ? COLLECTIONS[key].parent : key;
+  if (!rest.join('/') && ARCHIVED_UNDER[page]) result.nodes = [...[result.nodes].flat(), ...ARCHIVED_UNDER[page].map(archivedSection)];
+  return result;
+}
+
+function route(hash) {
   const [, key, ...rest] = (hash || '').replace(/^#/, '').split('/');
   const id = rest.join('/');
   if (!key) return { active: '', nodes: todayPage() };

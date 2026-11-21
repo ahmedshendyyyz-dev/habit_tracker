@@ -19,6 +19,11 @@ export function items(key) {
   return state.items[key] || [];
 }
 
+// Everything you have not archived. Archived items keep their history and still open from their link.
+export function activeItems(key) {
+  return items(key).filter((item) => !item.archived);
+}
+
 export function findItem(key, id) {
   return items(key).find((item) => item.id === id);
 }
@@ -178,4 +183,36 @@ export async function uploadPhoto(file, name) {
 // Your profile, or a starting one until you save your own.
 export function profile() {
   return items('profile')[0] || null;
+}
+
+/* ---------- Undo ---------- */
+
+// Runs a change and remembers how to reverse it. Only the items it touched are put back,
+// so anything else saved in the meantime (on another device, say) is left alone.
+export async function undoable(run) {
+  await queue;
+  const before = structuredClone(state.items);
+  await run();
+  const after = structuredClone(state.items);
+  const reverse = [];
+  for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
+    if (!Array.isArray(before[key]) && !Array.isArray(after[key])) continue;
+    const was = new Map((before[key] || []).map((item) => [item.id, item]));
+    const now = new Map((after[key] || []).map((item) => [item.id, item]));
+    for (const [id, item] of was) {
+      if (!now.has(id)) reverse.push({ key, id, item, index: (before[key] || []).indexOf(item) });
+      else if (JSON.stringify(item) !== JSON.stringify(now.get(id))) reverse.push({ key, id, item });
+    }
+    for (const id of now.keys()) if (!was.has(id)) reverse.push({ key, id, item: null });
+  }
+  if (!reverse.length) return null;
+  return () => commit((next) => {
+    for (const { key, id, item, index } of reverse) {
+      if (!Array.isArray(next[key])) next[key] = [];
+      const at = next[key].findIndex((entry) => entry.id === id);
+      if (!item) { if (at !== -1) next[key].splice(at, 1); continue; }
+      if (at !== -1) next[key][at] = item;
+      else next[key].splice(index === undefined ? next[key].length : Math.min(index, next[key].length), 0, item);
+    }
+  });
 }

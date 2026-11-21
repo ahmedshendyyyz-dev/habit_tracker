@@ -53,6 +53,8 @@ export function onTrack(goal) {
   const progress = goalProgress(goal);
   if (progress >= 100) return { text: 'Done', tone: 'success' };
   if (goal.targetDate && goal.targetDate < today) return { text: 'Overdue', tone: 'danger' };
+  // Nothing to measure yet: invite a first step instead of saying "Behind".
+  if (!usesMilestones(goal) && progress === 0) return { text: 'Add milestones', tone: 'muted' };
   const late = milestonesOf(goal).filter((m) => !m.done && m.due && m.due < today).length;
   if (late) return { text: late === 1 ? 'Behind: 1 milestone late' : `Behind: ${late} milestones late`, tone: 'attention' };
   if (goal.targetDate) {

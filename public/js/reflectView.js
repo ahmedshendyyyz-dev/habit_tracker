@@ -192,7 +192,16 @@ function weekBox() {
           h('div', { class: 'row-main' },
             h('p', { class: 'muted small' }, [formatDate(note.date), note.mood && note.mood !== MOODS[0] ? note.mood : ''].filter(Boolean).join(' · ')),
             h('p', { class: 'clamp' }, h('a', { class: 'plain-link', href: `#/journal/${note.id}` }, note.body))))))),
-      reviewForm(days, existing)));
+      showReviewForm(offset, days, existing)
+        ? reviewForm(days, existing)
+        : h('div', { class: 'review-later' },
+          h('button', { class: 'btn', type: 'button', onclick: () => { viewState.reviewOpen = true; rerender(); } }, icon('pencil'), 'Write this week\'s review'),
+          h('p', { class: 'muted small' }, 'The form opens by itself on Thursday, when the week is nearly done.'))));
+}
+
+// Early in the week the form stays folded. It opens on Thursday, for past weeks, or once a review exists.
+function showReviewForm(offset, days, existing) {
+  return Boolean(existing) || offset !== 0 || todayISO() >= days[5] || viewState.reviewOpen;
 }
 
 /* ---------- The page ---------- */

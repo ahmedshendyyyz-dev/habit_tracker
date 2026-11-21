@@ -221,7 +221,7 @@ export function dueNow(items, prefsRaw, now = new Date()) {
 
   if (prefs.milestones.on) {
     const lines = [];
-    for (const goal of items.goals || []) {
+    for (const goal of (items.goals || []).filter((goal) => !goal.archived)) {
       for (const m of goal.milestones || []) {
         if (m.done || !m.due) continue;
         if (m.due === dayPlus(day, 1)) lines.push(`Due tomorrow: ${m.title} (${goal.title})`);
@@ -241,7 +241,7 @@ export function dueNow(items, prefsRaw, now = new Date()) {
   }
 
   if (prefs.habits.on) {
-    const left = (items.habits || []).filter((habit) => habitPlanned(habit, day) && habitAmount(habit, day) < habitTarget(habit));
+    const left = (items.habits || []).filter((habit) => !habit.archived && habitPlanned(habit, day) && habitAmount(habit, day) < habitTarget(habit));
     if (left.length) {
       const body = left.map((habit) => (habit.type === 'Yes or no' || !habit.type ? habit.title : `${habit.title} ${fmt(habitAmount(habit, day))}/${fmt(habitTarget(habit))}`)).join(', ');
       all.push({ key: `habits:${day}`, at: toMinutes(prefs.habits.time), title: 'Habits not done yet', body, url: '#/habits' });

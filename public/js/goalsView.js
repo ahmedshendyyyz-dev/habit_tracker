@@ -4,7 +4,7 @@ import { confirmDialog, h, showDialog, toast } from './ui.js';
 import { findItem, items, updateItem } from './store.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
-import { boxSection, confirmDelete, counter, progressBar, stat } from './components.js';
+import { archiveButton, boxSection, confirmDelete, counter, progressBar, stat, withUndo } from './components.js';
 import { contributionGrid } from './grid.js';
 import { linkedTasks } from './tasksView.js';
 import {
@@ -102,7 +102,7 @@ function milestoneRow(goal, milestone) {
             confirmLabel: 'Delete',
             danger: true,
           });
-          if (yes) save(removeMilestone(goal, milestone.id), 'Milestone deleted');
+          if (yes) withUndo(() => removeMilestone(goal, milestone.id), 'Milestone deleted');
         },
       }, icon('close'))));
 }
@@ -176,7 +176,7 @@ export function goalDetailPage(id) {
   const total = [...contributions.values()].reduce((sum, count) => sum + count, 0);
   const grid = contributionGrid(contributions, {
     noun: ['contribution', 'contributions'],
-    ariaLabel: `${title}: contributions in the last year`,
+    ariaLabel: `${title}: contributions`,
     describe: (day) => `${describeGoalDay(goal, day)} on ${formatDate(day)}`,
   });
   const parent = goal.parentId && findItem('goals', goal.parentId);
@@ -194,6 +194,7 @@ export function goalDetailPage(id) {
           h('span', { class: 'muted' }, goal.targetDate ? `Target ${formatDate(goal.targetDate)}` : 'No target date'))),
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn', type: 'button', 'data-edit': true, onclick: () => openForm('goals', goal) }, icon('pencil'), 'Edit'),
+        archiveButton('goals', goal),
         h('button', { class: 'btn btn-danger', type: 'button', 'data-delete': true, onclick: () => confirmDelete('goals', goal, 'This removes the goal, its milestones and its progress log. A recent copy is kept in your backups.') }, 'Delete'))),
     h('div', { class: 'stack' },
       h('div', { class: 'stats' },
@@ -207,7 +208,7 @@ export function goalDetailPage(id) {
         h('div', { class: 'pinned-progress' }, progressBar(progress, title), h('span', { class: 'small' }, `${progress}%`)),
         next && h('p', { class: 'muted small' }, next),
         !usesMilestones(goal) && h('p', { class: 'muted small' }, 'Progress is the slider you set. Add milestones below and it will update by itself.')),
-      boxSection(`${total} ${total === 1 ? 'contribution' : 'contributions'} in the last year`, h('div', { class: 'box-body' }, grid.element)),
+      boxSection(`${total} ${total === 1 ? 'contribution' : 'contributions'} in ${grid.period}`, h('div', { class: 'box-body' }, grid.element)),
       logBox(goal),
       milestonesBox(goal),
       linkedTasks('goalId', goal.id),

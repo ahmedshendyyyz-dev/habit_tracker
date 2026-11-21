@@ -1,10 +1,10 @@
 // The task pieces: rows, quick add, the Today box and the week planner.
 import { REPEAT, displayTitle, formatDate, todayISO } from './schema.js';
 import { h, showDialog, toast } from './ui.js';
-import { findItem, items, saveItem, updateItem } from './store.js';
+import { commit, findItem, items, saveItem, updateItem } from './store.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
-import { boxSection, counter, newButton, rerender, subhead, viewState } from './components.js';
+import { boxSection, counter, newButton, rerender, subhead, viewState, withUndo } from './components.js';
 import {
   addDays, formatTime, isDoneOn, isEvent, isRepeating, nextOccurrence, overdueTasks,
   parseDay, repeatLabel, setDone, tasksOn, undatedTasks, weekDays,
@@ -18,8 +18,12 @@ function linkTo(key, id) {
 }
 
 async function toggle(task, day, checkbox) {
+  if (!checkbox.checked) {
+    if (!await withUndo(() => setDone(task, day, false), `"${displayTitle('tasks', task)}" is not done`)) checkbox.checked = true;
+    return;
+  }
   try {
-    await setDone(task, day, checkbox.checked);
+    await setDone(task, day, true);
   } catch (error) {
     checkbox.checked = !checkbox.checked;
     toast(`Not saved: ${error.message}`, true);
@@ -105,7 +109,18 @@ export function taskRow(task, day, { showDate = false, overdue = false } = {}) {
         h('a', { href: `#/tasks/${task.id}` }, displayTitle('tasks', task)),
         overdue && h('span', { class: 'label label-danger' }, `Overdue since ${formatDate(task.date)}`)),
       meta.length > 0 && h('p', { class: 'muted small' }, meta)),
+    overdue && !done && todayButton(task),
     moveButton(task, done));
+}
+
+// One tap to bring an overdue task to today.
+function todayButton(task) {
+  return h('button', {
+    class: 'btn btn-small today-button',
+    type: 'button',
+    'aria-label': `Move "${displayTitle('tasks', task)}" to today`,
+    onclick: () => withUndo(() => updateItem('tasks', task.id, (latest) => { latest.date = todayISO(); }), `Moved "${displayTitle('tasks', task)}" to today`),
+  }, 'Today');
 }
 
 export function quickAdd(day, placeholder) {
@@ -250,7 +265,15 @@ function weekView() {
         h('button', { class: 'btn btn-small', type: 'button', onclick: () => step(0), disabled: viewState.weekOffset === 0 }, 'This week'),
         h('button', { class: 'btn btn-small', type: 'button', 'aria-label': 'Next week', onclick: () => step(1) }, icon('chevronRight'))),
       h('h2', { class: 'week-range' }, range)),
-    overdue.length > 0 && boxSection(['Overdue ', counter(overdue.length)], h('ul', { class: 'list' }, overdue.map((task) => taskRow(task, task.date, { overdue: true })))),
+    overdue.length > 0 && boxSection(['Overdue ', counter(overdue.length)], h('ul', { class: 'list' }, overdue.map((task) => taskRow(task, task.date, { overdue: true }))),
+      overdue.length > 1 && h('button', {
+        class: 'btn btn-small',
+        type: 'button',
+        onclick: () => {
+          const ids = new Set(overdue.map((task) => task.id));
+          withUndo(() => commit((next) => { for (const task of next.tasks) if (ids.has(task.id)) task.date = todayISO(); }), `Moved ${ids.size} tasks to today`);
+        },
+      }, 'Move all to today')),
     h('div', { class: 'week-grid' }, days.map(weekColumn)),
     h('p', { class: 'muted small week-hint' }, 'To move a one-off task, drag it to another day or use its arrow button. Repeating tasks show a repeat icon and stay on their schedule.'),
   ];

@@ -1,7 +1,7 @@
 import { COLLECTIONS, COLLECTION_KEYS, HUBS, todayISO } from './schema.js';
 import './links.js';
 import { h, showDialog } from './ui.js';
-import { checkForChanges, items, load } from './store.js';
+import { activeItems, checkForChanges, items, load } from './store.js';
 import { displayName, headerAvatar, renderRoute } from './views.js';
 import { counter, viewState } from './components.js';
 import { tasksLeftToday } from './tasksView.js';
@@ -56,6 +56,7 @@ function menu({ summaryClass, summary, label, entries, align = 'right' }) {
   details.append(
     h('summary', { class: summaryClass, 'aria-label': label, title: label }, summary),
     h('div', { class: `menu-list menu-${align}`, role: 'menu' }, entries.map((entry) => {
+      if (entry.heading) return h('div', { class: 'menu-heading', role: 'presentation' }, entry.heading);
       const attrs = { class: 'menu-item', role: 'menuitem', onclick: () => { details.open = false; } };
       return entry.href
         ? h('a', { ...attrs, href: entry.href, 'aria-current': entry.current ? 'page' : undefined }, entry.icon && icon(entry.icon), entry.label)
@@ -77,11 +78,23 @@ document.addEventListener('keydown', (event) => {
   });
 });
 
+// The things you log most sit at the top of the + menu. Everything else is below.
+const QUICK_ADD = [['tasks', 'Task'], ['weights', 'Weight'], ['workouts', 'Workout'], ['sessions', 'Coding session'], ['journal', 'Note']];
+function quickAddEntries() {
+  const top = QUICK_ADD.map(([key]) => key);
+  const rest = COLLECTION_KEYS.filter((key) => key !== 'reviews' && !top.includes(key));
+  return [
+    ...QUICK_ADD.map(([key, label]) => ({ label, onClick: () => openForm(key) })),
+    { heading: 'Something else' },
+    ...rest.map((key) => ({ label: `New ${COLLECTIONS[key].singular}`, onClick: () => openForm(key) })),
+  ];
+}
+
 const addMenu = menu({
   summaryClass: 'btn-icon btn-split',
   summary: [icon('plus'), icon('chevron', 'icon icon-chevron')],
   label: 'Add something new',
-  entries: COLLECTION_KEYS.filter((key) => key !== 'reviews').map((key) => ({ label: `New ${COLLECTIONS[key].singular}`, onClick: () => openForm(key) })),
+  entries: quickAddEntries(),
 });
 actions.append(sessionIndicator(), addMenu, themeButton);
 
@@ -106,7 +119,7 @@ document.addEventListener('keydown', (event) => {
 const TAB_COUNTS = { '': () => 0, tasks: tasksLeftToday, habits: () => 0, health: () => 0, learning: () => 0, journal: () => 0 };
 
 function tab(key, label, active) {
-  const count = TAB_COUNTS[key] ? TAB_COUNTS[key]() : items(key).length;
+  const count = TAB_COUNTS[key] ? TAB_COUNTS[key]() : activeItems(key).length;
   return h('li', {}, h('a', {
     class: 'tab',
     href: `#/${key}`,
@@ -232,6 +245,8 @@ async function start() {
   render({ fresh: true });
   resumeSession();
   window.addEventListener('hashchange', () => {
+    // A menu left open should not follow you to the next page.
+    document.querySelectorAll('details.menu[open]').forEach((details) => { details.open = false; });
     render({ fresh: true });
     app.focus({ preventScroll: true });
   });

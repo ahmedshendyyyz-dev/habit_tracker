@@ -3,15 +3,28 @@
 import { COLLECTIONS, formatDate, hasVideos, todayISO } from './schema.js';
 import { toast } from './ui.js';
 import { loadPlaylist } from './courses.js';
-import { updateItem } from './store.js';
+import { items, updateItem } from './store.js';
 import { feedHabit } from './habits.js';
 
 const when = (day) => (day === todayISO() ? 'today' : formatDate(day));
 const note = (habit, day, verb) => (habit ? `Saved. ${verb} ${habit.title} for ${when(day)}.` : '');
 
+// Gym stays ticked for a day while any workout is logged on it.
+const workoutOn = (day, exceptId) => items('workouts').some((workout) => workout.date === day && workout.id !== exceptId);
+
 COLLECTIONS.workouts.afterSave = async (workout, before) => {
   if (before && before.date === workout.date) return '';
+  if (before && before.date && !workoutOn(before.date, workout.id)) await feedHabit('gym', before.date, -1);
   return note(await feedHabit('gym', workout.date, 1), workout.date, 'Ticked');
+};
+
+// Deleting takes back what the item added to its habit.
+COLLECTIONS.workouts.afterDelete = async (workout) => {
+  if (workout.date && !workoutOn(workout.date, workout.id)) await feedHabit('gym', workout.date, -1);
+};
+
+COLLECTIONS.sessions.afterDelete = async (session) => {
+  await feedHabit('coding', session.date, -(Number(session.minutes) || 0));
 };
 
 COLLECTIONS.sessions.afterSave = async (session, before) => {

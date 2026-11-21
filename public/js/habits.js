@@ -28,7 +28,7 @@ export function isScheduledOn(habit, day) {
 // Your own order first (set with Reorder on the Habits page), then the order you made them in.
 const orderOf = (habit) => (habit.order === undefined || habit.order === '' || !Number.isFinite(Number(habit.order)) ? Infinity : Number(habit.order));
 export function sortedHabits() {
-  return [...items('habits')].sort((a, b) => (orderOf(a) - orderOf(b)) || (a.createdAt || '').localeCompare(b.createdAt || ''));
+  return [...items('habits').filter((habit) => !habit.archived)].sort((a, b) => (orderOf(a) - orderOf(b)) || (a.createdAt || '').localeCompare(b.createdAt || ''));
 }
 
 // Moves a habit up (-1) or down (+1) and saves the new order of every habit at once.
@@ -191,6 +191,6 @@ export async function feedHabit(kind, day, amount = 1) {
   if (!habit || !day || !amount) return null;
   if (habit.type === HABIT_TYPES.number) await stepAmount(habit, day, amount);
   else if (habit.type === HABIT_TYPES.list) return null;
-  else if (amount > 0) await setChecked(habit, day, true);
+  else await setChecked(habit, day, amount > 0);
   return habit;
 }

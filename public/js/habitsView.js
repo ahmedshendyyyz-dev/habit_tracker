@@ -4,7 +4,7 @@ import { h, toast } from './ui.js';
 import { addItems, findItem, items } from './store.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
-import { boxSection, confirmDelete, newButton, rerender, stat, viewState } from './components.js';
+import { archiveButton, boxSection, confirmDelete, newButton, rerender, stat, viewState, withUndo } from './components.js';
 import { contributionGrid } from './grid.js';
 import { addDays, parseDay } from './tasks.js';
 import {
@@ -109,7 +109,9 @@ export function habitCheck(habit, day) {
     'aria-label': met ? `${title} is done ${when}. Tap to clear it` : `Mark ${title} done ${when}`,
     title: met ? 'Done. Tap to clear' : 'Mark done',
     'data-focus': `habit-${habit.id}-${day}-done`,
-    onclick: () => save(setComplete(habit, day, !met)),
+    onclick: () => (met
+      ? withUndo(() => setComplete(habit, day, false), `Cleared ${title} for ${when}`)
+      : save(setComplete(habit, day, true))),
   }, icon('checkSmall'));
 }
 
@@ -194,7 +196,7 @@ function habitList(list, day) {
 // The longest streak running right now, for the snapshot.
 export function topStreak() {
   let best = null;
-  for (const habit of items('habits')) {
+  for (const habit of sortedHabits()) {
     const streak = currentStreak(habit);
     if (streak && (!best || streak > best.streak)) best = { habit, streak };
   }
@@ -203,26 +205,35 @@ export function topStreak() {
 
 /* ---------- Habits page ---------- */
 
-function habitCard(habit) {
+// The last 7 days as small squares, today on the right. The full history is on the habit's own page.
+function weekStrip(habit) {
   const today = todayISO();
-  const grid = contributionGrid(habitLevels(habit), {
-    small: true,
-    weeks: 26,
-    ariaLabel: `${displayTitle('habits', habit)}, the last 26 weeks`,
-    describe: (day) => `${describeDay(habit, day)} on ${formatDate(day)}`,
-  });
+  const levels = habitLevels(habit);
+  const days = Array.from({ length: 7 }, (_, index) => addDays(today, index - 6));
+  return h('ol', { class: 'week-strip', 'aria-label': `${displayTitle('habits', habit)}, the last 7 days` },
+    days.map((day) => {
+      const planned = isScheduledOn(habit, day);
+      return h('li', { class: 'week-strip-day' },
+        h('span', { class: 'week-strip-name', 'aria-hidden': 'true' }, WEEKDAY_NAMES[parseDay(day).getDay()].slice(0, 1)),
+        h('span', {
+          class: `grid-day${planned ? '' : ' is-off'}${day === today ? ' is-today' : ''}`,
+          'data-level': levels.get(day) || 0,
+          title: `${formatDate(day)}: ${planned ? describeDay(habit, day) : 'not planned'}`,
+        }, h('span', { class: 'visually-hidden' }, `${formatDate(day)}: ${planned ? describeDay(habit, day) : 'not planned'}`)));
+    }));
+}
+
+function habitListRow(habit) {
+  const today = todayISO();
   const planned = isScheduledOn(habit, today);
-  return h('section', { class: 'box habit-card' },
-    h('div', { class: 'habit-card-head' },
-      planned && habitCheck(habit, today),
-      h('div', { class: 'habit-card-title' },
-        h('h2', {}, h('a', { href: `#/habits/${habit.id}` }, displayTitle('habits', habit))),
-        h('p', { class: 'muted small' }, `${goalLabel(habit)} · ${scheduleLabel(habit)}`),
-        h('p', { class: 'habit-streaks small' },
-          h('span', { class: 'label label-success' }, streakText(habit)),
-          h('span', { class: 'muted' }, `Best ${dayCount(bestStreak(habit))}`))),
-      planned ? extraControl(habit, today) : h('span', { class: 'muted small' }, 'Not planned today')),
-    h('div', { class: 'habit-card-grid' }, grid.element));
+  const met = planned && isMetOn(habit, today);
+  return h('li', { class: `list-row habit-row habit-page-row${met ? ' is-met' : ''}` },
+    planned ? habitCheck(habit, today) : h('span', { class: 'habit-check-spacer' }),
+    h('div', { class: 'row-main' },
+      h('div', { class: 'row-title' }, h('a', { href: `#/habits/${habit.id}` }, displayTitle('habits', habit))),
+      h('p', { class: 'muted small' }, [goalLabel(habit), scheduleLabel(habit), streakText(habit), `best ${dayCount(bestStreak(habit))}`].join(' · '))),
+    weekStrip(habit),
+    planned ? (extraControl(habit, today) || h('span', { class: 'habit-control', 'aria-hidden': 'true' })) : h('span', { class: 'muted small habit-control' }, 'Not planned today'));
 }
 
 export function habitsPage() {
@@ -258,7 +269,9 @@ export function habitsPage() {
           h('button', { class: 'btn btn-small', type: 'button', disabled: index === 0, 'aria-label': `Move ${name(habit)} up`, 'data-focus': `move-${habit.id}-up`, onclick: () => save(moveHabit(habit.id, -1)) }, '↑'),
           h('button', { class: 'btn btn-small', type: 'button', disabled: index === list.length - 1, 'aria-label': `Move ${name(habit)} down`, 'data-focus': `move-${habit.id}-down`, onclick: () => save(moveHabit(habit.id, 1)) }, '↓'))))))];
   }
-  return [head, bar, h('div', { class: 'stack' }, list.map(habitCard))];
+  return [head, bar,
+    h('section', { class: 'box' }, h('ul', { class: 'list' }, list.map(habitListRow))),
+    h('p', { class: 'muted small page-note' }, 'Open a habit to see its full history.')];
 }
 
 /* ---------- One habit ---------- */
@@ -289,7 +302,7 @@ export function habitDetailPage(id) {
   const logDay = viewState.habitLogDay[id] || today;
   const month = monthScore(habit);
   const daysDone = Object.keys(habit.log || {}).filter((day) => isMetOn(habit, day)).length;
-  const grid = contributionGrid(habitLevels(habit), { ariaLabel: `${displayTitle('habits', habit)}, the last year`, describe: (day) => `${describeDay(habit, day)} on ${formatDate(day)}` });
+  const grid = contributionGrid(habitLevels(habit), { ariaLabel: displayTitle('habits', habit), describe: (day) => `${describeDay(habit, day)} on ${formatDate(day)}` });
   const picker = h('input', {
     type: 'date',
     class: 'date-input',
@@ -310,6 +323,7 @@ export function habitDetailPage(id) {
         h('p', { class: 'detail-meta muted' }, `${goalLabel(habit)} · ${scheduleLabel(habit)}`)),
       h('div', { class: 'btn-row' },
         h('button', { class: 'btn', type: 'button', 'data-edit': true, onclick: () => openForm('habits', habit) }, icon('pencil'), 'Edit'),
+        archiveButton('habits', habit),
         h('button', { class: 'btn btn-danger', type: 'button', onclick: () => confirmDelete('habits', habit, 'This removes the habit and its whole history from your site. A recent copy is kept in your backups.') }, 'Delete'))),
     h('div', { class: 'stack' },
       h('div', { class: 'stats' },

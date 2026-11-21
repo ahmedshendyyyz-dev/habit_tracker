@@ -32,16 +32,28 @@ function hideTip() {
   if (tooltip) tooltip.hidden = true;
 }
 
+// From your first logged day, plus a little room, between 17 weeks and a full year.
+function weeksToShow(counts, today) {
+  const days = [...counts.entries()].filter(([, count]) => count > 0).map(([day]) => day).sort();
+  if (!days.length) return 17;
+  const [year, month, date] = days[0].split('-').map(Number);
+  const since = Math.round((today - new Date(year, month - 1, date, 12)) / 86400000);
+  return Math.max(17, Math.min(53, Math.ceil(since / 7) + 3));
+}
+
 /**
  * counts: Map of YYYY-MM-DD to a number.
  * noun: what a square counts, for example ['activity', 'activities'].
- * weeks: how many weeks to show, 53 is one full year.
+ * weeks: how many weeks to show, 53 is one full year. Left out, it grows with your history:
+ *   about 4 months at first, then up to a full year once you have that much.
  */
-export function contributionGrid(counts, { noun = ['activity', 'activities'], weeks = 53, small = false, describe, ariaLabel } = {}) {
+export function contributionGrid(counts, { noun = ['activity', 'activities'], weeks, small = false, describe, ariaLabel } = {}) {
   // Dates are built at noon: in Egypt the clocks change at midnight,
   // and stepping from midnight would skip or repeat a day.
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12);
+  if (!weeks) weeks = weeksToShow(counts, today);
+  const period = weeks >= 53 ? 'the last year' : `the last ${Math.round(weeks / 4.35)} months`;
   const todayKey = isoDay(today);
   const firstOffset = (weeks - 1) * 7 + today.getDay();
 
@@ -96,10 +108,11 @@ export function contributionGrid(counts, { noun = ['activity', 'activities'], we
 
   return {
     total,
+    period,
     element: h('div', {
       class: `contrib${small ? ' contrib-small' : ''}`,
       role: 'img',
-      'aria-label': ariaLabel || `${label(total)} in the last year`,
+      'aria-label': ariaLabel ? `${ariaLabel}, ${period}` : `${label(total)} in ${period}`,
     },
       scroller,
       h('div', { class: 'grid-legend', 'aria-hidden': 'true' }, h('span', {}, 'Less'), levels, h('span', {}, 'More'))),

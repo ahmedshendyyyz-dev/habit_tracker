@@ -1,0 +1,12 @@
+{
+  "name": "habit_tracker",
+  "private": true,
+  "description": "A private life and habit manager. No packages to install: the tests use Node's own test runner.",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test \"tests/*.test.mjs\""
+  },
+  "engines": {
+    "node": ">=24"
+  }
+}

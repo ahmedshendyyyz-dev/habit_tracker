@@ -1,15 +1,15 @@
 // The Learning page: your roadmap, coding time, courses and books.
-import { HUBS, displayTitle, formatDate, hasVideos, todayISO } from './schema.js';
+import { HABIT_TYPES, HUBS, displayTitle, formatDate, hasVideos, todayISO } from './schema.js';
 import { h, toast } from './ui.js';
-import { findItem, items, saveItem, updateItem } from './store.js';
+import { activeItems, findItem, items, saveItem, updateItem } from './store.js';
 import { openForm } from './form.js';
 import { icon } from './icons.js';
-import { boxSection, confirmDelete, counter, progressBar, stat, statusLabel } from './components.js';
+import { archiveButton, boxSection, confirmDelete, counter, progressBar, stat, statusLabel } from './components.js';
 import { loadPlaylist, playlistLink, setVideoDone, watchUrl } from './courses.js';
 import { sessionButton } from './focusSession.js';
 import { columnChart } from './charts.js';
 import { parseDay, weekDays } from './tasks.js';
-import { feedHabit } from './habits.js';
+import { amountOn, feedHabit, linkedHabit } from './habits.js';
 import { goalProgress } from './goals.js';
 import { goalStatusLabel, nextMilestoneLine } from './goalsView.js';
 
@@ -27,7 +27,7 @@ const habitNote = (habit) => (habit ? ` Added to ${habit.title}.` : '');
 /* ---------- Roadmap ---------- */
 
 function roadmapBox() {
-  const goals = items('goals').filter((goal) => goal.area === 'Learning')
+  const goals = activeItems('goals').filter((goal) => goal.area === 'Learning')
     .sort((a, b) => (a.targetDate || '9999').localeCompare(b.targetDate || '9999'));
   return boxSection(['Roadmap ', counter(goals.length)],
     goals.length
@@ -51,22 +51,24 @@ function roadmapBox() {
 function codingForm() {
   const minutes = h('input', { type: 'number', min: 1, step: 1, inputMode: 'numeric', required: true, placeholder: 'Minutes', 'aria-label': 'Minutes of coding', class: 'inline-input inline-number' });
   const topic = h('input', { type: 'text', maxLength: 200, placeholder: 'What did you work on?', 'aria-label': 'What you worked on', class: 'inline-input inline-grow' });
+  // Today unless you pick an earlier day.
+  const date = h('input', { type: 'date', value: todayISO(), max: todayISO(), required: true, 'aria-label': 'Day of the session', class: 'inline-input inline-date' });
   return h('form', {
     class: 'inline-form',
     onsubmit: async (event) => {
       event.preventDefault();
       const value = Number(minutes.value);
       if (!(value > 0)) return;
-      const today = todayISO();
+      const day = date.value && date.value <= todayISO() ? date.value : todayISO();
       try {
-        await saveItem('sessions', { id: crypto.randomUUID(), createdAt: new Date().toISOString(), date: today, minutes: value, topic: topic.value.trim(), notes: '' });
-        const habit = await feedHabit('coding', today, value);
-        toast(`Logged ${value} minutes.${habitNote(habit)}`);
+        await saveItem('sessions', { id: crypto.randomUUID(), createdAt: new Date().toISOString(), date: day, minutes: value, topic: topic.value.trim(), notes: '' });
+        const habit = await feedHabit('coding', day, value);
+        toast(`Logged ${value} minutes${day === todayISO() ? '' : ` on ${formatDate(day)}`}.${habitNote(habit)}`);
       } catch (error) {
         toast(`Not saved: ${error.message}`, true);
       }
     },
-  }, minutes, topic, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Log session'));
+  }, minutes, topic, date, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Log session'));
 }
 
 function codingBox() {
@@ -89,9 +91,7 @@ function codingBox() {
       h('div', { class: 'row-main' },
         h('div', { class: 'row-title row-title-task' }, h('a', { href: `#/sessions/${session.id}` }, displayTitle('sessions', session))),
         h('p', { class: 'muted small' }, `${formatDate(session.date)} · ${session.minutes} min`))))),
-  ], h('div', { class: 'btn-row' },
-    h('button', { class: 'btn btn-small', type: 'button', onclick: () => openForm('sessions') }, 'Log an earlier session'),
-    sessionButton()));
+  ], sessionButton());
 }
 
 /* ---------- Courses ---------- */
@@ -136,7 +136,7 @@ function courseRow(course) {
 
 function coursesBox() {
   const order = { 'In progress': 0, Planned: 1, Paused: 2, Done: 3 };
-  const courses = [...items('courses')].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
+  const courses = [...activeItems('courses')].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9));
   return boxSection(['Courses ', counter(courses.length)],
     courses.length
       ? h('ul', { class: 'list' }, courses.map(courseRow))
@@ -197,7 +197,7 @@ function bookRow(book) {
 
 function booksBox() {
   const order = { Reading: 0, 'Want to read': 1, Paused: 2, Finished: 3 };
-  const books = [...items('books')].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)
+  const books = [...activeItems('books')].sort((a, b) => (order[a.status] ?? 9) - (order[b.status] ?? 9)
     || (b.finishDate || '').localeCompare(a.finishDate || ''));
   return boxSection(['Books ', counter(books.length)],
     books.length
@@ -211,8 +211,14 @@ function booksBox() {
 export function learningPage() {
   const week = weekDays(0);
   const minutes = items('sessions').filter((s) => s.date >= week[0] && s.date <= week[6]).reduce((sum, s) => sum + (Number(s.minutes) || 0), 0);
-  const pages = sumLog(items('books'), week[0], week[6]);
-  const lessons = sumLog(items('courses'), week[0], week[6]);
+  // Book pages and lessons also count toward the Reading and Course lessons habits, so the habit holds
+  // everything, including what you logged straight on the habit. Without such a habit, count the books and courses.
+  const fromHabit = (kind, fallback) => {
+    const habit = linkedHabit(kind);
+    return habit && habit.type === HABIT_TYPES.number ? week.reduce((sum, day) => sum + amountOn(habit, day), 0) : fallback;
+  };
+  const pages = fromHabit('reading', sumLog(items('books'), week[0], week[6]));
+  const lessons = fromHabit('lessons', sumLog(items('courses'), week[0], week[6]));
   const year = todayISO().slice(0, 4);
   const finished = items('books').filter((book) => book.status === 'Finished' && (book.finishDate || '').startsWith(year)).length;
   return [
@@ -320,6 +326,7 @@ export function courseDetailPage(id) {
       h('div', { class: 'btn-row' },
         !hasVideos(course) && (!total || done < total) && h('button', { class: 'btn', type: 'button', onclick: () => addLesson(course) }, icon('plus'), '1 lesson'),
         h('button', { class: 'btn', type: 'button', 'data-edit': true, onclick: () => openForm('courses', course) }, icon('pencil'), 'Edit'),
+        archiveButton('courses', course),
         h('button', { class: 'btn btn-danger', type: 'button', 'data-delete': true, onclick: () => confirmDelete('courses', course) }, 'Delete'))),
     h('div', { class: 'stack' },
       progressPanel('courses', course),

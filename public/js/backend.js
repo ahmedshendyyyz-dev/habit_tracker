@@ -189,6 +189,35 @@ const cloud = {
     return data;
   },
 
+  /* Calendar feed */
+
+  async getCalendarToken() {
+    const sb = await supabase();
+    const { data, error } = await sb.from('calendar_feeds').select('token').maybeSingle();
+    if (error) throw plain(error, 'The calendar link could not be loaded.');
+    return data ? data.token : null;
+  },
+
+  // A new secret link. Any older link stops working.
+  async makeCalendarToken() {
+    const sb = await supabase();
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const { error } = await sb.from('calendar_feeds').upsert({ user_id: user.id, token, created_at: new Date().toISOString() });
+    if (error) throw plain(error, 'The calendar link was not made.');
+    return token;
+  },
+
+  async removeCalendarToken() {
+    const sb = await supabase();
+    const { error } = await sb.from('calendar_feeds').delete().eq('user_id', user.id);
+    if (error) throw plain(error, 'The calendar link was not turned off.');
+  },
+
+  calendarUrl(token) {
+    return `${SUPABASE_URL}/functions/v1/calendar?token=${token}`;
+  },
+
   async readPlaylist(url) {
     const sb = await supabase();
     const { data, error } = await sb.functions.invoke('playlist', { body: { url } });

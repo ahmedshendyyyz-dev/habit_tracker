@@ -61,8 +61,19 @@ function weightForm() {
   }, value, date, h('button', { class: 'btn btn-primary', type: 'submit' }, 'Log weight'));
 }
 
+// "Show all 12 weights" under a short list, and "Show fewer" once it is open.
+function showAllButton(flag, total, shown, noun) {
+  if (total <= shown) return null;
+  return h('div', { class: 'box-footer show-all' }, h('button', {
+    class: 'btn btn-small btn-invisible',
+    type: 'button',
+    onclick: () => { viewState[flag] = !viewState[flag]; rerender(); },
+  }, viewState[flag] ? 'Show fewer' : `Show all ${total} ${noun}`));
+}
+
 function weightBox(series) {
-  const recent = [...items('weights')].sort(byDate).reverse().slice(0, 5);
+  const all = [...items('weights')].sort(byDate).reverse();
+  const recent = viewState.allWeights ? all : all.slice(0, 3);
   return boxSection(['Weight ', counter(items('weights').length)], [
     h('div', { class: 'box-body stack-sm' },
       weightForm(),
@@ -73,6 +84,7 @@ function weightBox(series) {
       h('div', { class: 'row-main' },
         h('div', { class: 'row-title row-title-task' }, h('a', { href: `#/weights/${entry.id}` }, kg(Number(entry.kg)))),
         h('p', { class: 'muted small' }, [formatDate(entry.date), entry.note].filter(Boolean).join(' · ')))))),
+    showAllButton('allWeights', all.length, 3, 'weights'),
   ]);
 }
 
@@ -82,17 +94,18 @@ function workoutsBox() {
   const workouts = [...items('workouts')].sort(byDate).reverse();
   const counts = new Map();
   for (const workout of workouts) if (workout.date) counts.set(workout.date, (counts.get(workout.date) || 0) + 1);
-  const grid = contributionGrid(counts, { noun: ['workout', 'workouts'], ariaLabel: 'Your workouts in the last year' });
+  const grid = contributionGrid(counts, { noun: ['workout', 'workouts'], ariaLabel: 'Your workouts' });
   return boxSection(['Workouts ', counter(workouts.length)], [
     h('div', { class: 'box-body' }, grid.element),
     workouts.length
-      ? h('ul', { class: 'list list-top' }, workouts.slice(0, 10).map((workout) => h('li', { class: 'list-row' },
+      ? h('ul', { class: 'list list-top' }, (viewState.allWorkouts ? workouts : workouts.slice(0, 5)).map((workout) => h('li', { class: 'list-row' },
         icon('tool', 'icon row-icon'),
         h('div', { class: 'row-main' },
           h('div', { class: 'row-title row-title-task' }, h('a', { href: `#/workouts/${workout.id}` }, displayTitle('workouts', workout))),
           h('p', { class: 'muted small' }, workoutMeta(workout)),
           (workout.exercises || []).length > 0 && h('p', { class: 'row-preview clamp' }, workout.exercises.map(exerciseSummary).join(', '))))))
       : h('p', { class: 'box-note muted list-top' }, 'No workouts yet. Each one you log also ticks your Gym habit for that day.'),
+    showAllButton('allWorkouts', workouts.length, 5, 'workouts'),
   ], h('button', { class: 'btn btn-small', type: 'button', onclick: () => openForm('workouts') }, icon('plus'), 'New workout'));
 }
 

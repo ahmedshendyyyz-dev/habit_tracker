@@ -565,10 +565,7 @@ dialog::backdrop { background: #1f232866; }
 
 .row-title-task { gap: 4px 8px; }
 .row-title-task a { font-size: 14px; }
-.task-time {
-  font-family: var(--mono); font-size: 12px; color: var(--fg-muted);
-  padding: 0 6px; background: var(--bg-subtle); border: 1px solid var(--border-muted); border-radius: 6px;
-}
+.task-time { flex: none; font-size: 12px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
 .quick-add { display: flex; align-items: center; gap: 12px; padding: 8px 16px; }
 .quick-add-input {
   flex: 1; min-width: 0; height: 32px; padding: 0;
@@ -617,7 +614,7 @@ dialog::backdrop { background: #1f232866; }
 .week-item-text a { color: var(--fg); font-weight: 500; overflow-wrap: anywhere; }
 .week-item-text a:hover { color: var(--accent); }
 .week-item.is-done .week-item-text a { color: var(--fg-muted); text-decoration: line-through; }
-.week-item .task-time { font-size: 11px; padding: 0 4px; }
+.week-item .task-time { font-size: 11px; }
 .week-repeat { color: var(--fg-muted); display: inline-flex; }
 .week-repeat .icon, .week-repeat svg { width: 12px; height: 12px; }
 .btn-add-day {
@@ -1072,3 +1069,46 @@ body.signed-out .topbar, body.signed-out .bottom-nav, body.signed-out .focus-pil
   .today-heading { display: block; }
 }
 .habits-done-toggle .is-success { color: var(--success); }
+
+.toast { display: flex; align-items: center; gap: 16px; }
+.toast > span { flex: 1 1 auto; }
+.toast-action {
+  flex: none; padding: 4px 10px; font: inherit; font-weight: 600; color: var(--accent);
+  background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.toast-action:hover { background: var(--bg-subtle); }
+
+/* ---------- Compact Habits page ---------- */
+
+.week-strip { flex: none; display: flex; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.week-strip-day { display: grid; justify-items: center; gap: 2px; }
+.week-strip-name { font-size: 10px; line-height: 1; color: var(--fg-muted); }
+.week-strip .grid-day { --cell: 14px; border-radius: 3px; }
+.week-strip .grid-day.is-off { background: transparent; outline: 1px dashed var(--border); }
+.week-strip .grid-day.is-today { box-shadow: 0 0 0 2px var(--bg), 0 0 0 3px var(--fg-muted); }
+.habit-check-spacer { flex: none; width: 28px; }
+.habit-page-row .habit-control { min-width: 0; }
+@media (max-width: 767px) {
+  .habit-page-row { flex-wrap: wrap; }
+  .habit-page-row .row-main { flex: 1 1 calc(100% - 40px); }
+  .habit-page-row .week-strip { margin-left: 40px; }
+  .habit-page-row .habit-control { flex: 1 1 auto; justify-content: flex-end; padding-left: 0; }
+}
+
+.menu-heading {
+  margin: 6px 0 2px; padding: 8px 8px 2px; border-top: 1px solid var(--border-muted);
+  font-size: 12px; font-weight: 600; color: var(--fg-muted);
+}
+.today-button { flex: none; }
+.inline-date { width: 150px; }
+.review-later { display: grid; justify-items: start; gap: 8px; }
+.bio-hint { display: flex; align-items: flex-start; gap: 4px; } .bio-hint > span { flex: 1 1 auto; }
+.archived { display: grid; gap: 8px; justify-items: start; } .archived > .list { width: 100%; }
+
+.calendar-link-row { display: flex; gap: 8px; }
+.calendar-link { flex: 1 1 auto; min-width: 0; font-family: var(--mono); font-size: 12px; }
+.show-all { padding: 6px 8px; }
+.toast[hidden] { display: none; }
+@media (min-width: 768px) {
+  .habit-page-row .habit-control { min-width: 144px; justify-content: flex-end; }
+}
